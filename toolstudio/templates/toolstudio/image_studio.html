@@ -1,0 +1,951 @@
+{% extends "toolstudio/base.html" %}
+{% load static %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block extra_head %}
+<!-- Cropper.js (vendored — works offline / when CDN is blocked) -->
+<link href="{% static 'toolstudio/vendor/cropper.min.css' %}" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fira+Code:wght@400;500&family=Inter:wght@400;500;600;700&family=Lora&family=Montserrat&family=Open+Sans&family=Pacifico&family=Playfair+Display&family=Roboto&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-base: #0B0F19;
+    --panel-bg: rgba(18, 24, 38, 0.75);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+    --accent: #38bdf8;
+    --accent-glow: rgba(56, 189, 248, 0.4);
+    --text-main: #f1f5f9;
+    --text-muted: #94a3b8;
+  }
+  * { font-family: 'Inter', system-ui, sans-serif; box-sizing: border-box; }
+
+  /* ── Layout ── */
+  .editor-workspace {
+    display: grid;
+    grid-template-columns: 288px 1fr 280px;
+    gap: 0;
+    min-height: calc(100vh - 120px);
+    background: var(--bg-base);
+  }
+  @media (max-width: 991px) {
+    .editor-workspace { grid-template-columns: 1fr; }
+    .side-panel { display: none !important; }
+  }
+
+  /* ── Top Toolbar ── */
+  .top-toolbar {
+    background: var(--panel-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--glass-border);
+    padding: 0.6rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    box-shadow: var(--glass-shadow);
+    position: relative;
+    z-index: 10;
+  }
+  .toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 0.5rem;
+    border-right: 1px solid var(--glass-border);
+  }
+  .toolbar-group:last-child { border-right: none; }
+  .tb-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 52px;
+    text-align: center;
+  }
+  .tb-btn i { font-size: 1.15rem; margin-bottom: 2px; }
+  .tb-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+  }
+  .tb-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .tb-btn.active {
+    background: rgba(56, 189, 248, 0.15);
+    border-color: rgba(56, 189, 248, 0.4);
+    color: var(--accent);
+    box-shadow: 0 0 12px var(--accent-glow);
+  }
+  /* Avoid focus ring looking like “two tools selected” after rotate/flip */
+  .tb-btn:focus { outline: none; box-shadow: none; }
+  .tb-btn:focus-visible {
+    outline: 2px solid rgba(56, 189, 248, 0.45);
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+  .tb-btn:not(.active):active {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  /* ── Panels ── */
+  .side-panel {
+    background: rgba(10, 14, 20, 0.95);
+    border-right: 1px solid var(--glass-border);
+    padding: 1.25rem;
+    overflow-y: auto;
+    max-height: calc(100vh - 120px);
+  }
+  .side-panel.right { border-right: none; border-left: 1px solid var(--glass-border); }
+  .side-panel::-webkit-scrollbar { width: 4px; }
+  .side-panel::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+
+  .prop-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--glass-border);
+  }
+  .prop-section:last-child { border-bottom: none; }
+  .prop-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+  }
+  
+  .prop-slider {
+    width: 100%;
+    margin-bottom: 1rem;
+  }
+  .prop-slider label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--text-main);
+    margin-bottom: 0.4rem;
+  }
+  .range-inp {
+    width: 100%;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    outline: none;
+  }
+  .range-inp::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+    transition: transform 0.15s;
+  }
+  .range-inp::-webkit-slider-thumb:hover { transform: scale(1.25); }
+
+  .format-select {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--glass-border);
+    color: var(--text-main);
+    font-size: 0.8rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 0.4rem;
+    margin-bottom: 0.8rem;
+    outline: none;
+  }
+
+  .btn-export {
+    width: 100%;
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.7rem;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-export:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(56, 189, 248, 0.4); }
+
+  /* ── Canvas Area ── */
+  .canvas-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at center, #111827 0%, #0B0F19 100%);
+    background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 24px 24px;
+    overflow: auto;
+    position: relative;
+    padding: 2rem;
+    min-height: 280px;
+  }
+  .photo-placeholder {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 1.5rem;
+    background: radial-gradient(ellipse at center, rgba(30, 41, 59, 0.35) 0%, transparent 65%);
+    pointer-events: auto;
+  }
+  .photo-placeholder .btn { pointer-events: auto; }
+  #img-container {
+    position: relative;
+    z-index: 3;
+    max-width: 100%;
+    max-height: 100%;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8);
+    transition: transform 0.2s;
+  }
+  #main-image {
+    max-width: 100%;
+    display: block;
+  }
+
+  /* ── Multi-document tabs (Photoshop-style) ── */
+  .studio-canvas-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--bg-base);
+  }
+  .doc-tabs-bar {
+    display: flex;
+    align-items: stretch;
+    gap: 0.35rem;
+    padding: 0.45rem 0.75rem;
+    background: rgba(10, 14, 20, 0.98);
+    border-bottom: 1px solid var(--glass-border);
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+  .doc-tabs-bar::-webkit-scrollbar { height: 4px; }
+  .doc-tabs-bar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+  .doc-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem 0.35rem 0.4rem;
+    border-radius: 0.45rem;
+    border: 1px solid transparent;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    max-width: 160px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .doc-tab:hover { background: rgba(255,255,255,0.08); color: var(--text-main); }
+  .doc-tab.active {
+    border-color: rgba(56, 189, 248, 0.45);
+    background: rgba(56, 189, 248, 0.12);
+    color: var(--accent);
+  }
+  .doc-tab-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 0.3rem;
+    object-fit: cover;
+    background: #1e293b;
+    flex-shrink: 0;
+  }
+  .doc-tab-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .doc-tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 0.25rem;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .doc-tab-close:hover { background: rgba(239,68,68,0.25); color: #fca5a5; }
+  .btn-auto-enhance {
+    width: 100%;
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(129, 140, 248, 0.15));
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.8rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 0.45rem;
+    cursor: pointer;
+    margin-bottom: 1rem;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .btn-auto-enhance:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25);
+  }
+
+  /* ── Empty State ── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 4rem 2rem;
+    grid-column: 1 / -1;
+    min-height: calc(100vh - 120px);
+    background: radial-gradient(circle at center, rgba(30, 41, 59, 0.4) 0%, transparent 70%);
+  }
+  .empty-icon {
+    font-size: 5rem;
+    background: linear-gradient(135deg, #38bdf8, #818cf8, #c084fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 1.5rem;
+    animation: float 6s ease-in-out infinite;
+  }
+  @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-15px); } 100% { transform: translateY(0px); } }
+  .btn-upload {
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
+    border: none;
+    border-radius: 2rem;
+    padding: 0.8rem 2.5rem;
+    font-weight: 600;
+    font-size: 1rem;
+    color: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s;
+  }
+  .btn-upload:hover { transform: translateY(-3px); box-shadow: 0 10px 20px -10px rgba(56, 189, 248, 0.8); }
+
+  /* ── Loader ── */
+  .app-loader {
+    position: fixed; inset: 0; background: rgba(11, 15, 25, 0.85); backdrop-filter: blur(8px);
+    z-index: 9998; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: var(--accent); gap: 1.25rem;
+  }
+  .spinner-ring {
+    width: 64px; height: 64px; border: 4px solid rgba(56, 189, 248, 0.15);
+    border-top-color: #38bdf8; border-radius: 50%;
+    animation: spin 1s infinite linear;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #workspace-shell { background: var(--bg-base); }
+  .studio-mode-strip {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem;
+    padding: 0.55rem 1rem; border-bottom: 1px solid var(--glass-border);
+    background: rgba(15, 23, 42, 0.96);
+  }
+  .studio-mode-strip .btn-group .btn.active {
+    background: rgba(56, 189, 248, 0.2) !important; border-color: rgba(56, 189, 248, 0.55) !important; color: var(--accent) !important;
+  }
+  #fabric-wrap {
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.85);
+    border-radius: 0.4rem; overflow: hidden; line-height: 0;
+    max-width: 100%;
+  }
+  #fabric-canvas { display: block; max-width: 100%; height: auto !important; }
+  .pro-canvas-area { min-height: 420px; }
+  .pro-side input[type="color"] { height: 34px; border-radius: 6px; border: 1px solid var(--glass-border); cursor: pointer; }
+  .pro-toolbar-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+    padding: 0.45rem 0.65rem; margin-bottom: 0.5rem;
+    background: rgba(15, 23, 42, 0.9); border: 1px solid var(--glass-border); border-radius: 0.4rem;
+  }
+  .pro-layers-box {
+    max-height: 220px; overflow-y: auto; border: 1px solid var(--glass-border);
+    border-radius: 0.35rem; background: rgba(0,0,0,0.2); font-size: 0.72rem;
+  }
+  .pro-layer-row {
+    display: flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06); cursor: pointer; color: var(--text-muted);
+  }
+  .pro-layer-row:hover { background: rgba(255,255,255,0.05); color: var(--text-main); }
+  .pro-layer-row.active { background: rgba(56, 189, 248, 0.12); color: var(--accent); }
+  .pro-layer-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pro-layer-grip {
+    cursor: grab; opacity: 0.45; padding: 0 0.15rem; user-select: none;
+    touch-action: none;
+  }
+  .pro-layer-grip:active { cursor: grabbing; }
+  .pro-layer-row.pro-layer-drag-over { background: rgba(56, 189, 248, 0.15); outline: 1px dashed rgba(56, 189, 248, 0.5); }
+  .pro-align-btns .btn { padding: 0.2rem 0.45rem; font-size: 0.7rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="app-loader" class="app-loader d-none">
+  <div class="spinner-ring"></div>
+  <div style="font-weight: 700; letter-spacing: 1.5px;">PROCESSING...</div>
+</div>
+
+<div class="container-fluid px-0" style="max-width: 100%;">
+  <!-- Toolbar -->
+  <div class="top-toolbar" id="toolbar">
+    <div class="toolbar-group">
+      <label class="tb-btn" title="Replace image in current tab">
+        <i class="bi bi-folder2-open"></i><span>Open</span>
+        <input type="file" id="file-input" accept="image/*" class="d-none">
+      </label>
+      <label class="tb-btn" title="Add another image (new tab)">
+        <i class="bi bi-plus-lg"></i><span>Add</span>
+        <input type="file" id="file-input-add" accept="image/*" class="d-none">
+      </label>
+      <span class="align-self-center text-muted d-none d-xl-inline" style="font-size:0.58rem;letter-spacing:0.04em;max-width:88px;line-height:1.25;padding-left:4px;">Upload via Open or Add</span>
+    </div>
+    
+    <div class="toolbar-group">
+      <button type="button" class="tb-btn active" id="btn-crop-mode" title="Crop mode"><i class="bi bi-crop"></i><span>Crop</span></button>
+      <button type="button" class="tb-btn" id="btn-move-mode" title="Move / pan image"><i class="bi bi-arrows-move"></i><span>Move</span></button>
+      <button type="button" class="tb-btn" id="btn-remove-bg" style="color:#c084fc;" title="Server AI cutout (rembg) — same as Background remover"><i class="bi bi-magic"></i><span>Magic BG</span></button>
+    </div>
+    
+    <div class="toolbar-group">
+      <button type="button" class="tb-btn" id="btn-rotate-l"><i class="bi bi-arrow-counterclockwise"></i><span>Rot L</span></button>
+      <button type="button" class="tb-btn" id="btn-rotate-r"><i class="bi bi-arrow-clockwise"></i><span>Rot R</span></button>
+      <button type="button" class="tb-btn" id="btn-flip-h"><i class="bi bi-symmetry-horizontal"></i><span>Flip H</span></button>
+      <button type="button" class="tb-btn" id="btn-flip-v"><i class="bi bi-symmetry-vertical"></i><span>Flip V</span></button>
+    </div>
+
+    <div class="toolbar-group">
+      <button type="button" class="tb-btn" id="btn-reset"><i class="bi bi-arrow-repeat"></i><span>Reset</span></button>
+    </div>
+  </div>
+
+  <!-- Full-page empty state (legacy; workspace is shown first for tool exploration) -->
+  <div id="empty-state" class="empty-state d-none">
+    <div class="empty-icon"><i class="bi bi-image-fill"></i></div>
+    <h2 class="h3 text-white mb-3" style="font-weight: 700;">Studio Image Editor</h2>
+    <p class="text-secondary mb-4" style="max-width:520px; font-size:0.95rem; line-height: 1.6;">
+      Use <strong class="text-white">Photo &amp; crop</strong> for filters and tabs, or switch to <strong class="text-white">Pro canvas</strong> for backgrounds, shapes, pen, text, and Pillow-generated art. <strong class="text-white">Magic BG</strong> uses AI cutout on the server (not stored).
+    </p>
+    <label class="btn-upload">
+      <i class="bi bi-cloud-arrow-up-fill fs-5"></i> Choose Image
+      <input type="file" accept="image/*" class="d-none" id="file-input-2">
+    </label>
+  </div>
+
+  <!-- Workspace: classic (Cropper) + Pro (Fabric) -->
+  <div id="workspace-shell">
+    <div class="studio-mode-strip">
+      <span class="text-muted fw-bold" style="font-size:0.65rem;letter-spacing:0.14em;text-transform:uppercase;">Mode</span>
+      <div class="btn-group" role="group" aria-label="Editor mode">
+        <button type="button" class="btn btn-sm btn-outline-info active" id="mode-classic"><i class="bi bi-image me-1"></i>Photo &amp; crop</button>
+        <button type="button" class="btn btn-sm btn-outline-info" id="mode-pro"><i class="bi bi-brush me-1"></i>Pro canvas</button>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-import-to-pro" title="Insert current photo (with adjustments) as a layer on Pro canvas">
+        <i class="bi bi-arrow-right-circle me-1"></i> Send photo to Pro
+      </button>
+    </div>
+
+  <div id="workspace-classic" class="editor-workspace">
+    
+    <!-- Left panel: Adjustments -->
+    <div class="side-panel">
+      <div class="prop-section">
+        <div class="prop-label"><i class="bi bi-cloud-arrow-up me-1"></i> Image</div>
+        <p class="text-muted mb-2" style="font-size:0.72rem;line-height:1.45;">
+          Upload a photo for <strong class="text-light">Photo &amp; crop</strong> (filters, crop, export), or open <strong class="text-light">Pro canvas</strong> to design with shapes and text first.
+        </p>
+        <label class="btn btn-outline-info btn-sm w-100 mb-2">
+          <i class="bi bi-upload me-1"></i> Upload image
+          <input type="file" id="file-input-sidebar" accept="image/*" class="d-none">
+        </label>
+        <p class="text-muted mb-0" style="font-size:0.62rem;line-height:1.4;">Same as <strong class="text-secondary">Open</strong> / <strong class="text-secondary">Add</strong> in the toolbar above.</p>
+      </div>
+      <div class="prop-section">
+        <div class="prop-label"><i class="bi bi-magic me-1"></i> Quick fix</div>
+        <button type="button" class="btn-auto-enhance" id="btn-auto-enhance" title="Pro auto: linear-light tone map + soft contrast + light clarity (portrait-friendly; uses current crop)">
+          <i class="bi bi-stars me-1"></i> Auto Enhance
+        </button>
+      </div>
+
+      <div class="prop-section">
+        <div class="prop-label"><i class="bi bi-sliders me-1"></i> Adjustments</div>
+        
+        <div class="prop-slider">
+          <label><span>Brightness</span><span id="v-bright">100%</span></label>
+          <input type="range" class="range-inp filter-inp" id="f-bright" min="0" max="200" value="100">
+        </div>
+        <div class="prop-slider">
+          <label><span>Contrast</span><span id="v-cont">100%</span></label>
+          <input type="range" class="range-inp filter-inp" id="f-cont" min="0" max="200" value="100">
+        </div>
+        <div class="prop-slider">
+          <label><span>Saturation</span><span id="v-sat">100%</span></label>
+          <input type="range" class="range-inp filter-inp" id="f-sat" min="0" max="200" value="100">
+        </div>
+        <div class="prop-slider">
+          <label><span>Grayscale</span><span id="v-gray">0%</span></label>
+          <input type="range" class="range-inp filter-inp" id="f-gray" min="0" max="100" value="0">
+        </div>
+        <div class="prop-slider">
+          <label><span>Sepia</span><span id="v-sepia">0%</span></label>
+          <input type="range" class="range-inp filter-inp" id="f-sepia" min="0" max="100" value="0">
+        </div>
+        <div class="prop-slider">
+          <label><span>Blur</span><span id="v-blur">0px</span></label>
+          <input type="range" class="range-inp filter-inp" id="f-blur" min="0" max="20" value="0" step="0.5">
+        </div>
+        <div class="prop-slider">
+          <label><span>Hue</span><span id="v-hue">0°</span></label>
+          <input type="range" class="range-inp filter-inp" id="f-hue" min="-180" max="180" value="0">
+        </div>
+        <div class="prop-slider">
+          <label><span>Invert</span><span id="v-invert">0%</span></label>
+          <input type="range" class="range-inp filter-inp" id="f-invert" min="0" max="100" value="0">
+        </div>
+        
+        <button type="button" class="btn btn-outline-secondary btn-sm mt-2 w-100" id="btn-reset-filters">Reset Filters</button>
+      </div>
+
+      <div class="prop-section">
+        <div class="prop-label">Crop Aspect Ratio</div>
+        <div class="d-flex flex-wrap gap-2" id="crop-ratio-group">
+          <button type="button" class="btn btn-sm btn-outline-info crop-ratio flex-grow-1" data-ratio="free">Free</button>
+          <button type="button" class="btn btn-sm btn-outline-info crop-ratio flex-grow-1" data-ratio="1">1:1</button>
+          <button type="button" class="btn btn-sm btn-outline-info crop-ratio flex-grow-1" data-ratio="1.33333">4:3</button>
+          <button type="button" class="btn btn-sm btn-outline-info crop-ratio flex-grow-1" data-ratio="1.77777">16:9</button>
+          <button type="button" class="btn btn-sm btn-outline-info crop-ratio flex-grow-1" data-ratio="0.66666">2:3</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: tabs + canvas -->
+    <div class="studio-canvas-col">
+      <div class="doc-tabs-bar" id="doc-tabs" aria-label="Open images"></div>
+      <div class="canvas-area">
+        <div id="photo-placeholder" class="photo-placeholder">
+          <i class="bi bi-image text-info" style="font-size:2.75rem;opacity:0.55;"></i>
+          <p class="text-muted mt-3 mb-2" style="font-size:0.85rem;max-width:400px;line-height:1.45;">
+            No photo yet. Use <strong class="text-light">Upload</strong> in the left panel or <strong class="text-light">Open</strong> / <strong class="text-light">Add</strong> in the header, or switch to <strong class="text-light">Pro canvas</strong> to explore without a photo.
+          </p>
+          <label class="btn btn-sm btn-outline-light">
+            <i class="bi bi-cloud-arrow-up me-1"></i> Choose image
+            <input type="file" id="file-input-canvas" accept="image/*" class="d-none">
+          </label>
+        </div>
+        <div id="img-container" class="d-none position-relative">
+          <img id="main-image" src="" alt="Workspace Image">
+        </div>
+      </div>
+    </div>
+
+    <!-- Right panel: Export -->
+    <div class="side-panel right">
+      <div class="prop-section">
+        <div class="prop-label"><i class="bi bi-box-arrow-right me-1"></i> Export Settings</div>
+        
+        <label class="d-block text-muted" style="font-size:0.75rem; margin-bottom:0.4rem;">Format</label>
+        <select class="format-select" id="export-format">
+          <option value="image/jpeg">JPEG (.jpg)</option>
+          <option value="image/png">PNG (.png) - Transparent</option>
+          <option value="image/webp">WEBP (.webp) - High Comp</option>
+        </select>
+        
+        <label class="d-block text-muted" style="font-size:0.75rem; margin-bottom:0.4rem;">Quality (JPEG/WEBP only)</label>
+        <div class="d-flex align-items-center gap-2 mb-4">
+          <input type="range" class="range-inp flex-grow-1" id="export-quality" min="0.1" max="1.0" step="0.1" value="0.9">
+          <span class="text-info" style="font-size:0.75rem; font-weight:700;" id="v-qual">90%</span>
+        </div>
+        
+        <button type="button" class="btn-export" id="btn-export">
+          <i class="bi bi-download me-2"></i> Export Image
+        </button>
+      </div>
+
+      <div class="prop-section">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span style="font-size:0.75rem; color:var(--text-muted);">Export size (px):</span>
+          <span style="font-size:0.8rem; color:var(--text-main); font-weight:600;" id="lbl-dims">- x -</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pro Canvas -->
+  <div id="workspace-pro" class="editor-workspace d-none">
+    <div class="side-panel pro-side">
+      <div class="prop-section">
+        <div class="prop-label"><i class="bi bi-aspect-ratio me-1"></i> Canvas size</div>
+        <select class="format-select mb-2" id="pro-canvas-preset">
+          <option value="">— Preset or custom —</option>
+          <option value="960x640">Web (960×640)</option>
+          <option value="1200x630">Open Graph (1200×630)</option>
+          <option value="1080x1080">Instagram square (1080×1080)</option>
+          <option value="1080x1920">Story (1080×1920)</option>
+          <option value="1920x1080">Full HD (1920×1080)</option>
+          <option value="1280x720">HD (1280×720)</option>
+          <option value="800x600">SVGA (800×600)</option>
+          <option value="512x512">Icon (512×512)</option>
+          <option value="2480x3508">A4 @300dpi (2480×3508)</option>
+        </select>
+        <div class="d-flex gap-2 mb-2">
+          <input type="number" class="form-control form-control-sm" id="pro-canvas-w" min="100" max="4096" value="960" title="Width px">
+          <input type="number" class="form-control form-control-sm" id="pro-canvas-h" min="100" max="4096" value="640" title="Height px">
+        </div>
+        <button type="button" class="btn btn-outline-info btn-sm w-100" id="pro-canvas-apply">Apply canvas size</button>
+      </div>
+      <div class="prop-section">
+        <div class="prop-label"><i class="bi bi-palette me-1"></i> Background</div>
+        <label class="d-block text-muted" style="font-size:0.72rem;">Solid color</label>
+        <input type="color" id="pro-bg-color" value="#0f172a" class="w-100 mb-2">
+        <label class="d-block text-muted" style="font-size:0.72rem;">Background image</label>
+        <input type="file" id="pro-bg-image" accept="image/*" class="form-control form-control-sm mb-1">
+        <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="pro-bg-clear">Remove BG image</button>
+      </div>
+      <div class="prop-section">
+        <div class="prop-label">Draw &amp; shapes</div>
+        <div class="d-flex flex-wrap gap-1 mb-2">
+          <button type="button" class="btn btn-sm btn-outline-info pro-tool active" id="pro-select" title="Select / move"><i class="bi bi-cursor"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-warning pro-tool" id="pro-draw" title="Freehand"><i class="bi bi-pencil"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-tool" id="pro-rect" title="Rectangle"><i class="bi bi-square"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-tool" id="pro-circle" title="Ellipse"><i class="bi bi-circle"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-tool" id="pro-tri" title="Triangle"><i class="bi bi-triangle"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-tool" id="pro-line" title="Line"><i class="bi bi-slash-lg"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-tool" id="pro-star" title="Star"><i class="bi bi-star"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-tool" id="pro-pentagon" title="Pentagon"><i class="bi bi-pentagon"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-tool" id="pro-hexagon" title="Hexagon"><i class="bi bi-hexagon"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-tool" id="pro-arrow" title="Arrow"><i class="bi bi-arrow-right"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-tool" id="pro-rrect" title="Rounded rect"><i class="bi bi-app"></i></button>
+        </div>
+        <label class="d-block text-muted" style="font-size:0.72rem;">Stroke</label>
+        <input type="color" id="pro-stroke-color" value="#38bdf8" class="w-100 mb-2">
+        <label class="d-block text-muted" style="font-size:0.72rem;">Shape fill</label>
+        <input type="color" id="pro-fill-color" value="#1e293b" class="w-100 mb-2">
+        <div class="prop-slider">
+          <label><span>Brush size</span><span id="v-brush">4</span></label>
+          <input type="range" class="range-inp" id="pro-brush-width" min="1" max="48" value="4">
+        </div>
+        <div class="prop-slider">
+          <label><span>Shape stroke width</span><span id="v-pro-shape-stroke-w">3</span></label>
+          <input type="range" class="range-inp" id="pro-shape-stroke-w" min="0" max="48" step="1" value="3" title="Outline thickness for selected shape" disabled>
+        </div>
+        <div class="prop-slider">
+          <label><span>Rectangle corner radius</span><span id="v-pro-shape-corner">0</span></label>
+          <input type="range" class="range-inp" id="pro-shape-corner" min="0" max="80" step="1" value="0" title="Rounded corners (rectangle only)" disabled>
+        </div>
+        <div class="mb-2" id="pro-obj-shadow-wrap">
+          <label class="d-block text-muted mb-1" style="font-size:0.72rem;">Object shadow (shape / image)</label>
+          <div class="d-flex align-items-center gap-2">
+            <input type="color" id="pro-obj-shadow-color" value="#000000" class="flex-shrink-0" style="width:44px;height:32px;" title="Shadow color" disabled>
+            <input type="range" class="range-inp flex-grow-1" id="pro-obj-shadow-blur" min="0" max="28" step="1" value="0" title="Blur (0 = off)" disabled>
+            <span class="text-info" style="font-size:0.7rem;min-width:1.75rem;" id="v-pro-obj-shadow-blur">0</span>
+          </div>
+        </div>
+      </div>
+      <div class="prop-section">
+        <div class="prop-label"><i class="bi bi-type me-1"></i> Text &amp; fonts (Canva-style)</div>
+        <select class="format-select mb-1" id="pro-font" title="100+ fonts load when used"></select>
+        <p class="text-muted mb-2" style="font-size:0.65rem;">Pick a font, then color &amp; style below. Double-click text on the canvas to edit.</p>
+        <button type="button" class="btn btn-outline-info btn-sm w-100 mb-2" id="pro-add-text"><i class="bi bi-plus-lg me-1"></i>Add text box</button>
+        <div class="prop-slider">
+          <label><span>Font size</span><span id="v-pro-fs">32</span></label>
+          <input type="range" class="range-inp" id="pro-font-size" min="12" max="140" value="32">
+        </div>
+        <label class="d-block text-muted mb-1" style="font-size:0.72rem;">Text color</label>
+        <input type="color" id="pro-text-fill" value="#f1f5f9" class="w-100 mb-2" title="Main text color">
+        <label class="d-block text-muted mb-1" style="font-size:0.72rem;">Text outline</label>
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <input type="color" id="pro-text-stroke" value="#000000" class="flex-shrink-0" style="width:48px;height:34px;" title="Outline color">
+          <input type="range" class="range-inp flex-grow-1" id="pro-text-stroke-w" min="0" max="8" step="0.5" value="0" title="Outline thickness">
+          <span class="text-info" style="font-size:0.7rem;min-width:2rem;" id="v-pro-text-stroke-w">0</span>
+        </div>
+        <label class="d-block text-muted mb-1" style="font-size:0.72rem;">Text highlight (behind letters)</label>
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <input type="color" id="pro-text-hilite" value="#334155" class="flex-grow-1" style="height:34px;" title="Highlight / text box color">
+          <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" id="pro-text-hilite-clear" title="Remove highlight">Clear</button>
+        </div>
+        <div class="d-flex flex-wrap gap-1 mb-2" role="group" aria-label="Text style">
+          <button type="button" class="btn btn-sm btn-outline-light pro-text-style" id="pro-text-bold" data-style="bold" title="Bold"><strong>B</strong></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-text-style" id="pro-text-italic" data-style="italic" title="Italic"><em>I</em></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-text-style" id="pro-text-underline" data-style="underline" title="Underline"><u>U</u></button>
+          <button type="button" class="btn btn-sm btn-outline-light pro-text-style" id="pro-text-strike" data-style="linethrough" title="Strikethrough"><s>S</s></button>
+        </div>
+        <div class="prop-slider">
+          <label><span>Line height</span><span id="v-pro-text-lh">1.2</span></label>
+          <input type="range" class="range-inp" id="pro-text-lineheight" min="0.6" max="2.8" step="0.05" value="1.2" title="Line spacing">
+        </div>
+        <div class="prop-slider">
+          <label><span>Letter spacing</span><span id="v-pro-text-cs">0</span></label>
+          <input type="range" class="range-inp" id="pro-text-charspacing" min="-80" max="400" step="5" value="0" title="Character spacing (Fabric units)">
+        </div>
+        <label class="d-block text-muted mb-1" style="font-size:0.72rem;">Drop shadow</label>
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <input type="color" id="pro-text-shadow-color" value="#000000" class="flex-shrink-0" style="width:48px;height:34px;" title="Shadow color">
+          <input type="range" class="range-inp flex-grow-1" id="pro-text-shadow-blur" min="0" max="28" step="1" value="0" title="Shadow blur (0 = off)">
+          <span class="text-info" style="font-size:0.7rem;min-width:2rem;" id="v-pro-text-shadow-blur">0</span>
+        </div>
+        <label class="d-block text-muted mb-1" style="font-size:0.72rem;">Align text</label>
+        <div class="d-flex flex-wrap gap-1 mb-2">
+          <button type="button" class="btn btn-sm btn-outline-info flex-grow-1 pro-text-align" data-align="left" title="Align left"><i class="bi bi-text-left"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-info flex-grow-1 pro-text-align" data-align="center" title="Center"><i class="bi bi-text-center"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-info flex-grow-1 pro-text-align" data-align="right" title="Align right"><i class="bi bi-text-right"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-info flex-grow-1 pro-text-align" data-align="justify" title="Justify"><i class="bi bi-justify"></i></button>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-1" id="pro-text-shape-behind" title="Adds a rounded rectangle under this text (then use Layers to reorder)">
+          <i class="bi bi-square me-1"></i> Add color shape behind text
+        </button>
+        <p class="text-muted mb-0" style="font-size:0.58rem;line-height:1.35;">Tip: add rectangles from <strong>Draw &amp; shapes</strong>, then use <strong>Layers → To back</strong> so shapes sit under text.</p>
+      </div>
+      <div class="prop-section">
+        <div class="prop-label"><i class="bi bi-chat-quote me-1"></i> Text → shape (describe anything)</div>
+        <textarea class="form-control form-control-sm mb-2 text-light bg-dark border-secondary" id="pro-shape-command" rows="3" placeholder="Examples: red circle 250 · navy hexagon · gradient orange pink · green arrow · yellow wave · abstract · crystal blue"></textarea>
+        <button type="button" class="btn btn-outline-primary btn-sm w-100 mb-3" id="pro-shape-command-btn"><i class="bi bi-stars me-1"></i> Generate from your text</button>
+        <div class="prop-label"><i class="bi bi-shuffle me-1"></i> Quick random pattern</div>
+        <select class="format-select mb-2" id="pro-magic-style">
+          <option value="organic">Organic blobs</option>
+          <option value="geometric">Geometric mesh</option>
+          <option value="crystal">Crystal facets</option>
+          <option value="network">Network nodes</option>
+        </select>
+        <button type="button" class="btn-auto-enhance w-100" id="pro-magic-btn" style="margin-bottom:0">
+          <i class="bi bi-dice-5 me-1"></i> Random pattern
+        </button>
+      </div>
+      <div class="prop-section">
+        <div class="prop-label">Image layer</div>
+        <input type="file" id="pro-import-img" accept="image/*" class="form-control form-control-sm mb-2">
+        <label class="d-block text-muted mb-1" style="font-size:0.72rem;">Vector (SVG)</label>
+        <input type="file" id="pro-import-svg" accept=".svg,image/svg+xml" class="form-control form-control-sm">
+      </div>
+    </div>
+    <div class="studio-canvas-col">
+      <div class="pro-toolbar-bar" id="pro-toolbar-bar">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="pro-undo" title="Undo (Ctrl+Z)"><i class="bi bi-arrow-counterclockwise"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="pro-redo" title="Redo (Ctrl+Y)"><i class="bi bi-arrow-clockwise"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-light" id="pro-copy" title="Copy (Ctrl+C)"><i class="bi bi-clipboard"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-light" id="pro-paste" title="Paste (Ctrl+V)"><i class="bi bi-clipboard-check"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-light" id="pro-flip-h" title="Flip horizontal"><i class="bi bi-symmetry-horizontal"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-light" id="pro-flip-v" title="Flip vertical"><i class="bi bi-symmetry-vertical"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-light" id="pro-rot-ccw" title="Rotate −90°"><span style="font-size:0.72rem;font-weight:700;">−90°</span></button>
+        <button type="button" class="btn btn-sm btn-outline-light" id="pro-rot-cw" title="Rotate +90°"><span style="font-size:0.72rem;font-weight:700;">+90°</span></button>
+        <label class="text-muted mb-0 d-flex align-items-center gap-1" style="font-size:0.7rem;"><input type="checkbox" id="pro-grid" title="24px layout grid at 100% zoom; not burned into export"> Grid</label>
+        <span class="text-muted" style="font-size:0.65rem;">Zoom</span>
+        <input type="range" class="range-inp" id="pro-zoom" min="25" max="200" value="100" style="width:100px;">
+        <span class="text-info" style="font-size:0.72rem;font-weight:600;" id="v-zoom">100%</span>
+        <button type="button" class="btn btn-sm btn-outline-info" id="pro-zoom-fit" title="100% view">Reset</button>
+        <label class="text-muted mb-0 d-flex align-items-center gap-1" style="font-size:0.7rem;"><input type="checkbox" id="pro-snap"> Snap 8px</label>
+        <label class="text-muted mb-0 d-flex align-items-center gap-1" style="font-size:0.65rem;" title="While dragging, snap selection center to canvas center"><input type="checkbox" id="pro-snap-center"> Snap center</label>
+        <button type="button" class="btn btn-sm btn-outline-warning" id="pro-eyedropper" title="Pick color (Chrome)"><i class="bi bi-eyedropper"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-light" id="pro-dup" title="Duplicate"><i class="bi bi-copy"></i></button>
+      </div>
+      <div class="canvas-area pro-canvas-area">
+        <div id="fabric-wrap">
+          <canvas id="fabric-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="side-panel right">
+      <div class="prop-section">
+        <div class="prop-label"><i class="bi bi-stack me-1"></i> Layers</div>
+        <p class="text-muted mb-1" style="font-size:0.62rem;line-height:1.35;">
+          <i class="bi bi-eye me-1"></i>Hide / show · <i class="bi bi-trash me-1"></i>Delete ·
+          <kbd class="text-secondary">Del</kbd> removes selection ·
+          <kbd class="text-secondary">Ctrl+] / Ctrl+[</kbd> layer up/down ·
+          <kbd class="text-secondary">Ctrl+Shift+] / [</kbd> to front / to back · drag <i class="bi bi-grip-vertical"></i> to reorder ·
+          <kbd class="text-secondary">↑↓←→</kbd> nudge 1px (<kbd class="text-secondary">Shift</kbd> 10px)
+        </p>
+        <div class="pro-layers-box mb-2" id="pro-layers"></div>
+        <div class="text-muted text-uppercase mb-1" style="font-size:0.58rem;letter-spacing:0.05em;">Layer order (like Photoshop)</div>
+        <div class="d-flex gap-1 mb-1">
+          <button type="button" class="btn btn-outline-secondary btn-sm flex-grow-1" id="pro-layer-up" title="Bring forward one step"><i class="bi bi-chevron-up"></i><span class="ms-1 d-none d-xxl-inline">Forward</span></button>
+          <button type="button" class="btn btn-outline-secondary btn-sm flex-grow-1" id="pro-layer-down" title="Send backward one step"><i class="bi bi-chevron-down"></i><span class="ms-1 d-none d-xxl-inline">Back</span></button>
+        </div>
+        <div class="d-flex gap-1 mb-2">
+          <button type="button" class="btn btn-outline-info btn-sm flex-grow-1" id="pro-layer-tofront" title="Bring all the way to the top"><i class="bi bi-chevron-double-up"></i> To front</button>
+          <button type="button" class="btn btn-outline-info btn-sm flex-grow-1" id="pro-layer-toback" title="Send just above background"><i class="bi bi-chevron-double-down"></i> To back</button>
+        </div>
+        <div class="prop-slider">
+          <label><span>Opacity</span><span id="v-opacity">100%</span></label>
+          <input type="range" class="range-inp" id="pro-opacity" min="0" max="100" value="100">
+        </div>
+        <label class="d-block text-muted mb-1" style="font-size:0.72rem;">Blend mode</label>
+        <label class="d-flex align-items-center gap-2 mb-2 text-muted" style="font-size:0.72rem;">
+          <input type="checkbox" id="pro-lock-aspect" title="Keep width/height ratio when scaling from corners">
+          Lock aspect ratio (uniform scale)
+        </label>
+        <select class="format-select mb-2" id="pro-blend">
+          <option value="source-over">Normal</option>
+          <option value="multiply">Multiply</option>
+          <option value="screen">Screen</option>
+          <option value="overlay">Overlay</option>
+          <option value="darken">Darken</option>
+          <option value="lighten">Lighten</option>
+          <option value="color-dodge">Color dodge</option>
+          <option value="color-burn">Color burn</option>
+          <option value="hard-light">Hard light</option>
+          <option value="soft-light">Soft light</option>
+          <option value="difference">Difference</option>
+          <option value="exclusion">Exclusion</option>
+        </select>
+        <div class="prop-label">Align to canvas</div>
+        <div class="d-flex flex-wrap gap-1 pro-align-btns mb-2">
+          <button type="button" class="btn btn-sm btn-outline-info" data-align="left" title="Left"><i class="bi bi-text-left"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-info" data-align="hcenter" title="Center H"><i class="bi bi-distribute-vertical"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-info" data-align="right" title="Right"><i class="bi bi-text-right"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-info" data-align="top" title="Top"><i class="bi bi-align-top"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-info" data-align="vcenter" title="Center V"><i class="bi bi-distribute-horizontal"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-info" data-align="bottom" title="Bottom"><i class="bi bi-align-bottom"></i></button>
+        </div>
+        <button type="button" class="btn btn-outline-success btn-sm w-100 mb-2" id="pro-align-center-both" title="Center selection horizontally and vertically on the canvas">
+          <i class="bi bi-bullseye me-1"></i> Center on canvas (H + V)
+        </button>
+        <div class="prop-label">Align selection (2+ objects)</div>
+        <p class="text-muted mb-1" style="font-size:0.58rem;line-height:1.35;">Multi-select on canvas, then match edges or distribute spacing.</p>
+        <div class="d-flex flex-wrap gap-1 mb-1">
+          <button type="button" class="btn btn-sm btn-outline-warning pro-sel-align" data-salign="left" title="Align left"><i class="bi bi-align-start"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-warning pro-sel-align" data-salign="hcenter" title="Align centers H"><i class="bi bi-distribute-vertical"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-warning pro-sel-align" data-salign="right" title="Align right"><i class="bi bi-align-end"></i></button>
+        </div>
+        <div class="d-flex flex-wrap gap-1 mb-2">
+          <button type="button" class="btn btn-sm btn-outline-warning pro-sel-align" data-salign="top" title="Align top"><i class="bi bi-align-top"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-warning pro-sel-align" data-salign="vcenter" title="Align centers V"><i class="bi bi-distribute-horizontal"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-warning pro-sel-align" data-salign="bottom" title="Align bottom"><i class="bi bi-align-bottom"></i></button>
+        </div>
+        <div class="d-flex flex-wrap gap-1 mb-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1 pro-sel-dist" data-dist="h" title="Distribute horizontally"><i class="bi bi-three-dots"></i> H</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1 pro-sel-dist" data-dist="v" title="Distribute vertically"><i class="bi bi-three-dots-vertical"></i> V</button>
+        </div>
+        <div class="d-flex gap-1">
+          <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1" id="pro-group">Group</button>
+          <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1" id="pro-ungroup">Ungroup</button>
+        </div>
+      </div>
+      <div class="prop-section" id="pro-img-crop-wrap">
+        <div class="prop-label"><i class="bi bi-crop me-1"></i> Image crop (layer)</div>
+        <p class="text-muted mb-2" style="font-size:0.62rem;line-height:1.35;">
+          Select an <strong>image</strong> layer (not the locked background). Values are <strong>source pixels</strong> (cropX, cropY, width, height).
+        </p>
+        <div class="prop-slider mb-1">
+          <label><span>Crop left</span><span id="v-pro-img-crop-x">0</span></label>
+          <input type="range" class="range-inp" id="pro-img-crop-x" min="0" max="1" value="0" disabled>
+        </div>
+        <div class="prop-slider mb-1">
+          <label><span>Crop top</span><span id="v-pro-img-crop-y">0</span></label>
+          <input type="range" class="range-inp" id="pro-img-crop-y" min="0" max="1" value="0" disabled>
+        </div>
+        <div class="prop-slider mb-1">
+          <label><span>Crop width</span><span id="v-pro-img-crop-w">0</span></label>
+          <input type="range" class="range-inp" id="pro-img-crop-w" min="1" max="2" value="1" disabled>
+        </div>
+        <div class="prop-slider mb-2">
+          <label><span>Crop height</span><span id="v-pro-img-crop-h">0</span></label>
+          <input type="range" class="range-inp" id="pro-img-crop-h" min="1" max="2" value="1" disabled>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="pro-img-crop-reset" disabled>Use full image</button>
+      </div>
+      <div class="prop-section">
+        <div class="prop-label"><i class="bi bi-stars me-1"></i> Image effects</div>
+        <p class="text-muted mb-2" style="font-size:0.62rem;line-height:1.35;">
+          Works on the <strong>selected image</strong>, or the <strong>top image layer</strong> if nothing is selected — <strong>background images</strong> included. Use <strong>Apply preset</strong> after choosing a look.
+        </p>
+        <label class="d-block text-muted mb-1" style="font-size:0.7rem;">Trending presets</label>
+        <select class="format-select mb-2" id="pro-effect-preset">
+          <option value="">— Choose preset —</option>
+          <option value="reset">Reset (clear all effects)</option>
+          <option value="cinematic">Cinematic</option>
+          <option value="hdr">HDR punch</option>
+          <option value="soft_glow">Soft glow</option>
+          <option value="moody">Moody</option>
+          <option value="clean">Clean &amp; bright</option>
+          <option value="warm">Warm trending</option>
+          <option value="cool">Cool teal</option>
+          <option value="bw">Editorial B&amp;W</option>
+          <option value="vintage">Vintage film</option>
+          <option value="neon">Neon pop</option>
+          <option value="matte">Matte luxury</option>
+        </select>
+        <button type="button" class="btn btn-sm btn-primary w-100 mb-3" id="pro-effect-apply-preset"><i class="bi bi-magic me-1"></i> Apply preset</button>
+        <div class="prop-slider mb-1">
+          <label><span>Brightness</span><span id="v-fx-bright">0</span></label>
+          <input type="range" class="range-inp" id="pro-fx-brightness" min="-0.45" max="0.45" step="0.03" value="0">
+        </div>
+        <div class="prop-slider mb-1">
+          <label><span>Contrast</span><span id="v-fx-contrast">0</span></label>
+          <input type="range" class="range-inp" id="pro-fx-contrast" min="-0.35" max="0.45" step="0.03" value="0">
+        </div>
+        <div class="prop-slider mb-1">
+          <label><span>Saturation</span><span id="v-fx-sat">0</span></label>
+          <input type="range" class="range-inp" id="pro-fx-saturation" min="-0.55" max="0.55" step="0.03" value="0">
+        </div>
+        <div class="prop-slider mb-2">
+          <label><span>Blur</span><span id="v-fx-blur">0</span></label>
+          <input type="range" class="range-inp" id="pro-fx-blur" min="0" max="0.22" step="0.01" value="0">
+        </div>
+        <div class="d-flex gap-1">
+          <button type="button" class="btn btn-sm btn-outline-info flex-grow-1" id="pro-effect-apply-sliders">Apply sliders</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="pro-effect-reset-sliders">Reset sliders</button>
+        </div>
+      </div>
+      <div class="prop-section">
+        <div class="prop-label"><i class="bi bi-download me-1"></i> Export design</div>
+        <select class="format-select" id="pro-export-format">
+          <option value="image/png">PNG</option>
+          <option value="image/jpeg">JPEG</option>
+          <option value="image/webp">WEBP</option>
+          <option value="image/bmp">BMP</option>
+          <option value="image/gif">GIF</option>
+          <option value="application/pdf">PDF (one page)</option>
+        </select>
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <input type="range" class="range-inp flex-grow-1" id="pro-export-quality" min="0.1" max="1" step="0.1" value="0.92">
+          <span class="text-info" style="font-size:0.75rem;font-weight:700;" id="v-pro-qual">92%</span>
+        </div>
+        <button type="button" class="btn-export" id="pro-export-btn"><i class="bi bi-download me-2"></i> Download</button>
+      </div>
+      <div class="prop-section">
+        <div class="prop-label">Edit</div>
+        <button type="button" class="btn btn-outline-danger btn-sm w-100 mb-2" id="pro-delete">Delete selected</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="pro-clear">Clear all</button>
+      </div>
+      <p class="text-muted mb-0" style="font-size:0.72rem;line-height:1.45;">
+        Pro canvas: <strong>Fabric.js</strong> · Text-to-shape &amp; patterns are generated on the server · GIF/PDF export as selected.
+      </p>
+    </div>
+  </div>
+  </div>
+</div>
+
+<script src="{% static 'toolstudio/vendor/cropper.min.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" crossorigin="anonymous"></script>
+<script>
+  window.__IMAGE_STUDIO__ = {
+    removeBgUrl: "{% url 'imagetools_remove_bg' %}",
+    magicShapeUrl: "{% url 'toolstudio_image_studio_magic_shape' %}",
+    shapeCommandUrl: "{% url 'toolstudio_image_studio_shape_command' %}",
+    toGifUrl: "{% url 'toolstudio_image_studio_to_gif' %}"
+  };
+</script>
+<script src="{% static 'toolstudio/js/image_studio.js' %}"></script>
+<script src="{% static 'toolstudio/js/image_studio_fabric.js' %}"></script>
+{% endblock %}

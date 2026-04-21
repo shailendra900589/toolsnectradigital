@@ -1,0 +1,117 @@
+{% extends "toolstudio/base.html" %}
+{% load static %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1200px;">
+  {% include "toolstudio/_tool_nav.html" with breadcrumb="PDF from photos" %}
+  <h1 class="h3 text-white mb-2">PDF from photos <span class="badge bg-info bg-opacity-25 text-info small">Advanced</span></h1>
+  <p class="text-secondary small mb-4">Drag to reorder thumbnails (order = page order). Right: live PDF preview after build.</p>
+
+  {% if error %}
+  <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+  {% endif %}
+
+  <div class="row g-4 split-workspace">
+    <div class="col-lg-7">
+      <h2 class="h6 text-info mb-2">Images (drag cards to reorder)</h2>
+      <div id="ph-drop" class="drop-zone rounded-4 p-3 mb-3 text-center small">
+        <input type="file" id="ph-in" accept="image/*" multiple class="d-none">
+        <span class="text-secondary">Drop images or <a href="#" id="ph-browse" class="text-info">browse</a></span>
+      </div>
+      <div id="ph-grid" class="row g-2"></div>
+    </div>
+    <div class="col-lg-5">
+      <h2 class="h6 text-success mb-2">PDF output</h2>
+      <button type="button" class="btn btn-info rounded-3 mb-2" id="ph-build" disabled>Build PDF</button>
+      <span class="small text-secondary ms-2" id="ph-count">0 images</span>
+      <div class="preview-panel mt-2">
+        <iframe id="ph-iframe" class="d-none w-100 rounded-2 border-0" style="min-height: 360px;" title="PDF"></iframe>
+        <p class="ph mb-0" id="ph-ip">Preview after build</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { rejectOversizeFiles, parseToolErrorResponse } from "{% static 'toolstudio/js/tool-errors.js' %}";
+
+let items = [];
+function csrf() { return document.querySelector('meta[name="csrf-token"]').content; }
+
+function renderGrid() {
+  const g = document.getElementById("ph-grid");
+  g.innerHTML = "";
+  items.forEach((obj, idx) => {
+    const col = document.createElement("div");
+    col.className = "col-6 col-md-4 col-lg-3";
+    col.draggable = true;
+    col.dataset.i = String(idx);
+    col.innerHTML = `<div class="glass-card p-1 position-relative ph-card" style="cursor:grab;">
+      <img src="${obj.url}" class="w-100 rounded-2" alt="" style="height:100px;object-fit:cover;">
+      <button type="button" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-1 py-0 px-1 ph-x">×</button>
+      <div class="small text-center text-muted text-truncate">${obj.name}</div></div>`;
+    col.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", String(idx)); });
+    col.addEventListener("dragover", (e) => e.preventDefault());
+    col.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
+      const to = idx;
+      if (from === to) return;
+      const [sp] = items.splice(from, 1);
+      items.splice(to, 0, sp);
+      renderGrid();
+    });
+    col.querySelector(".ph-x").addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      URL.revokeObjectURL(obj.url);
+      items = items.filter((x) => x !== obj);
+      renderGrid();
+    });
+    g.appendChild(col);
+  });
+  document.getElementById("ph-count").textContent = items.length + " images";
+  document.getElementById("ph-build").disabled = items.length === 0;
+}
+
+function addFiles(fs) {
+  const allowed = rejectOversizeFiles(fs, "Image");
+  for (const f of allowed) {
+    if (!f.type.match(/^image\//)) continue;
+    items.push({ file: f, name: f.name, url: URL.createObjectURL(f) });
+  }
+  renderGrid();
+}
+
+document.getElementById("ph-in").addEventListener("change", (e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; });
+document.getElementById("ph-browse").addEventListener("click", (e) => { e.preventDefault(); document.getElementById("ph-in").click(); });
+const phDrop = document.getElementById("ph-drop");
+phDrop.addEventListener("dragover", (e) => { e.preventDefault(); phDrop.classList.add("dragover"); });
+phDrop.addEventListener("dragleave", () => phDrop.classList.remove("dragover"));
+phDrop.addEventListener("drop", (e) => { e.preventDefault(); phDrop.classList.remove("dragover"); if (e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+
+document.getElementById("ph-build").addEventListener("click", async () => {
+  if (!items.length) return;
+  const fd = new FormData();
+  fd.append("csrfmiddlewaretoken", csrf());
+  items.forEach((o) => fd.append("images", o.file));
+  const iframe = document.getElementById("ph-iframe");
+  const ip = document.getElementById("ph-ip");
+  ip.textContent = "Building…";
+  const res = await fetch("{% url 'toolstudio_pdf_create_photos' %}", { method: "POST", body: fd, headers: { "X-CSRFToken": csrf() }, credentials: "same-origin" });
+  if (!res.ok) {
+    ip.textContent = await parseToolErrorResponse(res);
+    return;
+  }
+  const blob = await res.blob();
+  const u = URL.createObjectURL(blob);
+  iframe.src = u + "#toolbar=0";
+  iframe.classList.remove("d-none");
+  ip.classList.add("d-none");
+  const a = document.createElement("a");
+  a.href = u;
+  a.download = "from-photos.pdf";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+});
+</script>
+{% endblock %}

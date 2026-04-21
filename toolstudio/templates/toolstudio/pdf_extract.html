@@ -1,0 +1,122 @@
+{% extends "toolstudio/base.html" %}
+{% load static %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1200px;">
+  {% include "toolstudio/_tool_nav.html" with breadcrumb="Extract" %}
+  <h1 class="h3 text-white mb-2">Extract from PDF <span class="badge bg-info bg-opacity-25 text-info small">Advanced</span></h1>
+  <p class="text-secondary small mb-4">Visual PDF preview · extract <strong class="text-white">text preview</strong> in-page or download images ZIP.</p>
+
+  {% if error %}
+  <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+  {% endif %}
+
+  <div class="row g-4 split-workspace">
+    <div class="col-lg-6">
+      <h2 class="h6 text-info mb-2">Document</h2>
+      <label class="drop-zone d-block rounded-4 p-3 text-center small mb-2" id="ex-drop">
+        <input type="file" id="ex-file" accept="application/pdf,.pdf" class="d-none">
+        <span id="ex-lbl">Drop PDF or click</span>
+      </label>
+      <div class="preview-panel"><canvas id="ex-cv" class="d-none rounded-2"></canvas><p class="ph" id="ex-ph">No PDF</p></div>
+      <div id="ex-strip" class="d-flex flex-wrap gap-1 justify-content-center mt-2"></div>
+    </div>
+    <div class="col-lg-6">
+      <h2 class="h6 text-success mb-2">Extract &amp; preview</h2>
+      <div class="btn-group btn-group-sm mb-3" role="group">
+        <input type="radio" class="btn-check" name="exm" id="ex-txt" checked autocomplete="off">
+        <label class="btn btn-outline-info" for="ex-txt">Text</label>
+        <input type="radio" class="btn-check" name="exm" id="ex-img" autocomplete="off">
+        <label class="btn btn-outline-info" for="ex-img">Images (ZIP)</label>
+      </div>
+      <button type="button" class="btn btn-success btn-sm rounded-3 mb-2" id="ex-run" disabled>Extract</button>
+      <div class="glass-card rounded-3 p-2" style="max-height: 420px; overflow: auto;" id="ex-preview-box">
+        <pre class="small text-secondary mb-0 text-wrap" id="ex-pre" style="white-space: pre-wrap;">Text preview appears here.</pre>
+      </div>
+      <p class="small text-muted mt-2 mb-0" id="ex-note">Images mode downloads a ZIP (binary preview not shown).</p>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { loadPdfFromFile, renderPageToCanvas, renderThumbStrip } from "{% static 'toolstudio/js/advanced-pdf.js' %}";
+import { rejectOversizeFiles, parseToolErrorResponse } from "{% static 'toolstudio/js/tool-errors.js' %}";
+
+let file = null;
+function csrf() { return document.querySelector('meta[name="csrf-token"]').content; }
+const exFile = document.getElementById("ex-file");
+const exDrop = document.getElementById("ex-drop");
+const exRun = document.getElementById("ex-run");
+const exPre = document.getElementById("ex-pre");
+
+async function loadF(f) {
+  if (!f) return;
+  const pass = rejectOversizeFiles([f], "PDF");
+  f = pass[0] || null;
+  if (!f) return;
+  const ok = f.type === "application/pdf" || /\.pdf$/i.test(f.name || "");
+  const ph = document.getElementById("ex-ph");
+  const cv = document.getElementById("ex-cv");
+  if (!ok) {
+    ph.classList.remove("d-none");
+    ph.textContent = "Drop a PDF file.";
+    cv.classList.add("d-none");
+    return;
+  }
+  file = f;
+  document.getElementById("ex-lbl").textContent = f.name;
+  ph.classList.remove("d-none");
+  ph.textContent = "Rendering preview…";
+  cv.classList.add("d-none");
+  document.getElementById("ex-strip").innerHTML = "";
+  exRun.disabled = true;
+  try {
+    const pdf = await loadPdfFromFile(f);
+    await renderPageToCanvas(pdf, 1, cv, 520);
+    await renderThumbStrip(f, document.getElementById("ex-strip"), 10, 72);
+    ph.classList.add("d-none");
+    cv.classList.remove("d-none");
+    exRun.disabled = false;
+  } catch (err) {
+    ph.classList.remove("d-none");
+    ph.textContent = err && err.message ? err.message : "Could not preview PDF.";
+    cv.classList.add("d-none");
+    file = null;
+  }
+}
+exFile.addEventListener("change", () => loadF(exFile.files[0]));
+exDrop.addEventListener("click", () => exFile.click());
+exDrop.addEventListener("dragover", (e) => { e.preventDefault(); exDrop.classList.add("dragover"); });
+exDrop.addEventListener("dragleave", () => exDrop.classList.remove("dragover"));
+exDrop.addEventListener("drop", (e) => { e.preventDefault(); exDrop.classList.remove("dragover"); if (e.dataTransfer.files[0]) loadF(e.dataTransfer.files[0]); });
+
+exRun.addEventListener("click", async () => {
+  if (!file) return;
+  const mode = document.getElementById("ex-img").checked ? "images" : "text";
+  const fd = new FormData();
+  fd.append("csrfmiddlewaretoken", csrf());
+  fd.append("pdf", file);
+  fd.append("mode", mode);
+  exPre.textContent = mode === "text" ? "Loading…" : "Preparing download…";
+  const res = await fetch("{% url 'toolstudio_pdf_extract' %}", { method: "POST", body: fd, headers: { "X-CSRFToken": csrf() }, credentials: "same-origin" });
+  if (!res.ok) {
+    exPre.textContent = await parseToolErrorResponse(res);
+    return;
+  }
+  if (mode === "text") {
+    const t = await res.text();
+    exPre.textContent = t.length > 120000 ? t.slice(0, 120000) + "\n\n… (truncated for preview)" : t;
+  } else {
+    const blob = await res.blob();
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = u;
+    a.download = "pdf-images.zip";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    exPre.textContent = "ZIP downloaded.";
+    setTimeout(() => URL.revokeObjectURL(u), 3000);
+  }
+});
+</script>
+{% endblock %}

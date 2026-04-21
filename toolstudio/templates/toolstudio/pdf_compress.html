@@ -1,0 +1,126 @@
+{% extends "toolstudio/base.html" %}
+{% load static %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  #z-drop { cursor: pointer; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1100px;">
+  {% include "toolstudio/_tool_nav.html" with breadcrumb="Compress" %}
+  <h1 class="h3 text-white mb-2">Compress PDF <span class="badge bg-info bg-opacity-25 text-info small">Advanced</span></h1>
+  <p class="text-secondary small mb-4">Before/after size · inline PDF preview of compressed file.</p>
+
+  {% if error %}
+  <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+  {% endif %}
+
+  <div class="row g-4 split-workspace">
+    <div class="col-md-6">
+      <h2 class="h6 text-info mb-2">Original</h2>
+      <label class="drop-zone d-block rounded-4 p-3 text-center small mb-2" id="z-drop">
+        <input type="file" id="z-file" accept="application/pdf,.pdf" class="d-none">
+        <span id="z-lbl">Drop PDF</span>
+      </label>
+      <p class="small text-secondary mb-1">Size: <span class="text-white" id="z-in-s">—</span></p>
+      <div class="preview-panel"><canvas id="z-cv" class="d-none rounded-2"></canvas><p class="ph" id="z-ph">—</p></div>
+    </div>
+    <div class="col-md-6">
+      <h2 class="h6 text-success mb-2">Compressed</h2>
+      <button type="button" class="btn btn-warning btn-sm text-dark rounded-3 mb-2" id="z-go" disabled>Compress</button>
+      <p class="small text-secondary mb-1">Output: <span class="text-white" id="z-out-s">—</span> <span id="z-save" class="text-success"></span></p>
+      <div class="preview-panel">
+        <iframe id="z-if" class="d-none w-100 rounded-2 border-0" style="min-height: 340px;"></iframe>
+        <p class="ph mb-0" id="z-op">Run compression</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { loadPdfFromFile, renderPageToCanvas, formatBytes } from "{% static 'toolstudio/js/advanced-pdf.js' %}";
+import { rejectOversizeFiles, parseToolErrorResponse } from "{% static 'toolstudio/js/tool-errors.js' %}";
+
+let f = null;
+function csrf() { return document.querySelector('meta[name="csrf-token"]').content; }
+
+async function setPdfFile(file) {
+  const ok = file && (file.type === "application/pdf" || /\.pdf$/i.test(file.name || ""));
+  if (!ok) return;
+  const one = rejectOversizeFiles([file], "PDF");
+  file = one[0] || null;
+  if (!file) return;
+  f = file;
+  const input = document.getElementById("z-file");
+  const dt = new DataTransfer();
+  dt.add(file);
+  input.files = dt.files;
+  document.getElementById("z-lbl").textContent = file.name;
+  document.getElementById("z-in-s").textContent = formatBytes(file.size);
+  const ph = document.getElementById("z-ph");
+  const zcv = document.getElementById("z-cv");
+  ph.classList.remove("d-none");
+  ph.textContent = "Rendering preview…";
+  zcv.classList.add("d-none");
+  document.getElementById("z-go").disabled = true;
+  try {
+    const pdf = await loadPdfFromFile(file);
+    await renderPageToCanvas(pdf, 1, zcv, 560);
+    ph.classList.add("d-none");
+    zcv.classList.remove("d-none");
+    document.getElementById("z-go").disabled = false;
+  } catch (err) {
+    ph.textContent = err && err.message ? err.message : "Could not preview PDF.";
+    zcv.classList.add("d-none");
+    f = null;
+  }
+}
+
+document.getElementById("z-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (file) await setPdfFile(file);
+});
+
+const zDrop = document.getElementById("z-drop");
+zDrop.addEventListener("click", () => document.getElementById("z-file").click());
+zDrop.addEventListener("dragover", (e) => { e.preventDefault(); zDrop.classList.add("dragover"); });
+zDrop.addEventListener("dragleave", () => zDrop.classList.remove("dragover"));
+zDrop.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  zDrop.classList.remove("dragover");
+  const file = e.dataTransfer.files[0];
+  if (file) await setPdfFile(file);
+});
+
+document.getElementById("z-go").addEventListener("click", async () => {
+  if (!f) return;
+  const fd = new FormData();
+  fd.append("csrfmiddlewaretoken", csrf());
+  fd.append("pdf", f);
+  document.getElementById("z-op").textContent = "Compressing…";
+  const res = await fetch("{% url 'toolstudio_pdf_compress' %}", { method: "POST", body: fd, headers: { "X-CSRFToken": csrf() }, credentials: "same-origin" });
+  if (!res.ok) {
+    const msg = await parseToolErrorResponse(res);
+    document.getElementById("z-op").textContent = msg;
+    return;
+  }
+  const outN = parseInt(res.headers.get("X-Output-Bytes") || "0", 10);
+  const blob = await res.blob();
+  document.getElementById("z-out-s").textContent = formatBytes(outN || blob.size);
+  const pct = f.size ? Math.round((1 - (outN || blob.size) / f.size) * 100) : 0;
+  document.getElementById("z-save").textContent = pct > 0 ? "(~" + pct + "% smaller)" : "";
+  const u = URL.createObjectURL(blob);
+  const iframe = document.getElementById("z-if");
+  iframe.src = u + "#toolbar=0";
+  iframe.classList.remove("d-none");
+  document.getElementById("z-op").classList.add("d-none");
+  const a = document.createElement("a");
+  a.href = u;
+  a.download = "compressed.pdf";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+});
+</script>
+{% endblock %}

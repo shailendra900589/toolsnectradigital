@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <script>
+    window.TOOLSTUDIO_UPLOAD = { maxMb: {{ upload_max_mb }}, maxBytes: {{ upload_max_bytes }} };
+  </script>
+  <title>{% block title %}{{ page_title|default:"Best Free Image Tools Online — Background & Eraser | Image Studio" }}{% endblock %}</title>
+  <meta name="description" content="{% block meta_desc %}{{ meta_description|default:"Best free image tools: AI background remover and text eraser with transparent PNG export. Private, no signup." }}{% endblock %}">
+  <meta name="keywords" content="{% block meta_keywords %}{{ meta_keywords|default:"best free image tools, background remover free, remove text from image, free online tools" }}{% endblock %}">
+  <meta name="author" content="{{ author|default:"Image Studio" }}">
+  <link rel="canonical" href="{% firstof canonical_url request.build_absolute_uri %}">
+  <link rel="alternate" hreflang="en" href="{% firstof canonical_url request.build_absolute_uri %}">
+  <link rel="alternate" hreflang="x-default" href="{% firstof canonical_url request.build_absolute_uri %}">
+  <link rel="sitemap" type="application/xml" title="Sitemap" href="{% url 'sitemap' %}">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="theme-color" content="#0b0f14">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ og_site_name|default:"Image Studio — Best Free Tools Online" }}">
+  <meta property="og:title" content="{% block og_title %}{{ og_title|default:page_title }}{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}{{ og_description|default:meta_description }}{% endblock %}">
+  <meta property="og:url" content="{% firstof canonical_url request.build_absolute_uri %}">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ twitter_title|default:page_title }}">
+  <meta name="twitter:description" content="{{ twitter_description|default:meta_description|truncatewords:32 }}">
+  {% block structured_data %}{% if json_ld %}{{ json_ld|safe }}{% endif %}{% endblock %}
+
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" referrerpolicy="no-referrer">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      corePlugins: { preflight: false },
+      theme: { extend: { boxShadow: { glow: '0 0 40px -10px rgba(56, 189, 248, 0.35)' } } },
+    };
+  </script>
+
+  <style>
+    :focus-visible { outline: 2px solid rgba(56, 189, 248, 0.8); outline-offset: 2px; }
+    .hero-gradient {
+      background:
+        radial-gradient(ellipse 900px 500px at 15% -20%, rgba(14, 165, 233, 0.2), transparent 55%),
+        radial-gradient(ellipse 700px 400px at 90% 10%, rgba(168, 85, 247, 0.1), transparent 50%),
+        linear-gradient(165deg, #0b0f14 0%, #0f1419 45%, #0a0d11 100%);
+    }
+    .glass-card {
+      background: linear-gradient(145deg, rgba(26, 35, 53, 0.94) 0%, rgba(18, 26, 36, 0.97) 100%);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+      backdrop-filter: blur(12px);
+    }
+    .tool-pill .nav-link {
+      color: var(--bs-secondary-color);
+      border: 1px solid transparent;
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
+    }
+    .tool-pill .nav-link:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(148, 163, 184, 0.2);
+      color: var(--bs-body-color);
+    }
+    .tool-pill .nav-link.active {
+      background: rgba(13, 202, 240, 0.12) !important;
+      border-color: rgba(13, 202, 240, 0.35) !important;
+      color: #e0f2fe !important;
+    }
+    .checkerboard {
+      background-color: #2a2a2a;
+      background-image:
+        linear-gradient(45deg, #3a3a3a 25%, transparent 25%),
+        linear-gradient(-45deg, #3a3a3a 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #3a3a3a 75%),
+        linear-gradient(-45deg, transparent 75%, #3a3a3a 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    }
+    .drop-zone {
+      border: 2px dashed rgba(148, 163, 184, 0.32);
+      transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.15s ease;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: rgba(56, 189, 248, 0.6);
+      background-color: rgba(56, 189, 248, 0.05);
+    }
+    .drop-zone.dragover { transform: scale(1.003); }
+    .preview-wrap { position: relative; border-radius: 0.75rem; overflow: hidden; min-height: 200px; }
+    .preview-wrap img { display: block; width: 100%; height: auto; max-height: min(52vh, 500px); object-fit: contain; }
+    .process-overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(165deg, rgba(8, 12, 18, 0.94), rgba(15, 23, 42, 0.9));
+      display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 5;
+    }
+    .process-overlay.is-active { display: flex; }
+    .scan-line {
+      position: absolute; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.85), transparent);
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+      animation: scanMove 2.2s ease-in-out infinite;
+      pointer-events: none;
+    }
+    @keyframes scanMove { 0%, 100% { top: 8%; } 50% { top: 88%; } }
+    .ring-pulse {
+      width: 64px; height: 64px; border-radius: 50%;
+      border: 3px solid rgba(56, 189, 248, 0.3);
+      border-top-color: rgba(56, 189, 248, 0.95);
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-primary-gradient {
+      background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 50%, #0284c7 100%);
+      border: none; color: #fff !important;
+      box-shadow: 0 4px 18px -4px rgba(14, 165, 233, 0.5);
+    }
+    .btn-primary-gradient:hover:not(:disabled) { filter: brightness(1.07); }
+    .step-badge {
+      width: 1.75rem; height: 1.75rem; border-radius: 9999px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(14, 165, 233, 0.12));
+      border: 1px solid rgba(56, 189, 248, 0.32);
+    }
+    #result-toolbar { display: none; }
+    #result-toolbar.visible { display: block; }
+    .kbd { font-size: 0.7rem; padding: 0.1rem 0.35rem; border-radius: 0.25rem; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.1); }
+    {% block extra_css %}{% endblock %}
+  </style>
+</head>
+<body class="hero-gradient min-vh-100 d-flex flex-column text-body">
+
+  <a class="visually-hidden-focusable position-absolute top-0 start-0 z-3 p-2 bg-dark text-white rounded-bottom" href="#main-content">Skip to content</a>
+
+  <header class="border-bottom border-secondary border-opacity-25 bg-dark bg-opacity-50 sticky-top" style="backdrop-filter: blur(8px); z-index: 1020;">
+    <div class="container py-2">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <a href="{% url 'imagetools_index' %}" class="text-decoration-none text-white d-flex align-items-center gap-2 fw-semibold">
+          <span class="rounded-3 bg-info bg-opacity-25 text-info px-2 py-1 small"><i class="bi bi-stars" aria-hidden="true"></i></span>
+          Image Studio
+        </a>
+        <nav class="tool-pill flex-grow-1 flex-sm-grow-0" aria-label="Tools">
+          <ul class="nav nav-pills gap-1 justify-content-sm-end">
+            <li class="nav-item">
+              <a class="nav-link rounded-3 py-2 px-3 d-flex align-items-center gap-2 {% block pill_bg %}{% endblock %}" href="{% url 'imagetools_index' %}">
+                <i class="bi bi-image-alt" aria-hidden="true"></i><span class="d-none d-md-inline">Background</span><span class="d-md-none">BG</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link rounded-3 py-2 px-3 d-flex align-items-center gap-2 {% block pill_text %}{% endblock %}" href="{% url 'imagetools_text_remover' %}">
+                <i class="bi bi-type-strikethrough" aria-hidden="true"></i><span>Text</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link rounded-3 py-2 px-3 d-flex align-items-center gap-2" href="{% url 'toolstudio_hub' %}">
+                <i class="bi bi-grid-3x3-gap" aria-hidden="true"></i><span class="d-none d-md-inline">PDF tools</span><span class="d-md-none">PDF</span>
+              </a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main id="main-content" class="flex-grow-1 py-4 py-lg-5" tabindex="-1">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="border-top border-secondary border-opacity-25 py-4 mt-auto">
+    <div class="container text-center small text-secondary">
+      <p class="mb-1">Uploads are processed on this server and are not stored afterward (max {{ upload_max_mb }} MB per file).</p>
+      <p class="mb-0">{% block footer_note %}{% endblock %}</p>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

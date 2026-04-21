@@ -1,0 +1,127 @@
+{% extends "toolstudio/base.html" %}
+{% load static %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  #rotate-right .preview-panel { overflow: visible; }
+  #r-cv2 { transform-origin: center center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1100px;">
+  {% include "toolstudio/_tool_nav.html" with breadcrumb="Rotate" %}
+  <h1 class="h3 text-white mb-2">Rotate PDF <span class="badge bg-info bg-opacity-25 text-info small">Advanced</span></h1>
+  <p class="text-secondary small mb-4">First-page preview · right side shows rotation hint (CSS). Server applies rotation to <strong class="text-white">all</strong> pages.</p>
+
+  {% if error %}
+  <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+  {% endif %}
+
+  <div class="row g-4 split-workspace">
+    <div class="col-md-6">
+      <h2 class="h6 text-info mb-2">Original</h2>
+      <input type="file" id="r-file" accept="application/pdf,.pdf" class="form-control form-control-sm bg-dark border-secondary mb-2">
+      <div class="preview-panel"><canvas id="r-cv" class="d-none rounded-2"></canvas><p class="ph mb-0" id="r-ph">Upload a PDF for live preview</p></div>
+    </div>
+    <div class="col-md-6" id="rotate-right">
+      <h2 class="h6 text-success mb-2">Preview (rotated)</h2>
+      <label class="small text-secondary">Angle (server)</label>
+      <select id="r-deg" class="form-select form-select-sm bg-dark border-secondary mb-2">
+        <option value="90">90°</option>
+        <option value="180">180°</option>
+        <option value="270">270°</option>
+      </select>
+      <div class="preview-panel overflow-hidden d-flex align-items-center justify-content-center" id="r-wrap" style="min-height: 280px;">
+        <canvas id="r-cv2" class="d-none rounded-2" style="transition: transform 0.2s;"></canvas>
+        <p class="ph mb-0" id="r-ph2">Preview appears after upload</p>
+      </div>
+      <button type="button" class="btn btn-info btn-sm rounded-3 mt-2" id="r-go" disabled>Apply &amp; download</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { loadPdfFromFile, renderPageToCanvas } from "{% static 'toolstudio/js/advanced-pdf.js' %}";
+import { rejectOversizeFiles, parseToolErrorResponse } from "{% static 'toolstudio/js/tool-errors.js' %}";
+
+let file = null;
+function csrf() { return document.querySelector('meta[name="csrf-token"]').content; }
+const cv1 = document.getElementById("r-cv");
+const cv2 = document.getElementById("r-cv2");
+const degEl = document.getElementById("r-deg");
+const rph = document.getElementById("r-ph");
+const rph2 = document.getElementById("r-ph2");
+
+async function redraw() {
+  if (!file) return;
+  const ok = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+  if (!ok) {
+    rph.classList.remove("d-none");
+    rph.textContent = "Please choose a PDF file.";
+    cv1.classList.add("d-none");
+    cv2.classList.add("d-none");
+    rph2.classList.remove("d-none");
+    return;
+  }
+  rph.classList.remove("d-none");
+  rph.textContent = "Rendering…";
+  rph2.classList.remove("d-none");
+  rph2.textContent = "…";
+  cv1.classList.add("d-none");
+  cv2.classList.add("d-none");
+  try {
+    const pdf = await loadPdfFromFile(file);
+    await renderPageToCanvas(pdf, 1, cv1, 480);
+    const ctx = cv2.getContext("2d");
+    cv2.width = cv1.width;
+    cv2.height = cv1.height;
+    ctx.drawImage(cv1, 0, 0);
+    const d = parseInt(degEl.value, 10) || 90;
+    cv2.style.transform = "rotate(" + d + "deg)";
+    rph.classList.add("d-none");
+    cv1.classList.remove("d-none");
+    rph2.classList.add("d-none");
+    cv2.classList.remove("d-none");
+    document.getElementById("r-go").disabled = false;
+  } catch (err) {
+    rph.classList.remove("d-none");
+    rph.textContent = err && err.message ? err.message : "Could not load PDF.";
+    rph2.classList.add("d-none");
+    cv1.classList.add("d-none");
+    cv2.classList.add("d-none");
+    document.getElementById("r-go").disabled = true;
+  }
+}
+
+document.getElementById("r-file").addEventListener("change", async (e) => {
+  const picked = e.target.files[0];
+  if (!picked) return;
+  const pass = rejectOversizeFiles([picked], "PDF");
+  file = pass[0] || null;
+  if (!file) return;
+  await redraw();
+});
+degEl.addEventListener("change", redraw);
+
+document.getElementById("r-go").addEventListener("click", async () => {
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("csrfmiddlewaretoken", csrf());
+  fd.append("pdf", file);
+  fd.append("degrees", degEl.value);
+  const res = await fetch("{% url 'toolstudio_pdf_rotate' %}", { method: "POST", body: fd, headers: { "X-CSRFToken": csrf() }, credentials: "same-origin" });
+  if (!res.ok) {
+    alert(await parseToolErrorResponse(res));
+    return;
+  }
+  const blob = await res.blob();
+  const u = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = u;
+  a.download = "rotated-" + degEl.value + ".pdf";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+});
+</script>
+{% endblock %}

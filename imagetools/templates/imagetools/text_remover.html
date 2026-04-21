@@ -1,0 +1,478 @@
+{% extends "imagetools/base.html" %}
+{% block pill_text %}active{% endblock %}
+{% block footer_note %}Object erase: LaMa / OpenCV inpaint · selection on overlay only (image not draggable){% endblock %}
+
+{% block extra_css %}
+/* Only overlay canvas receives pointer events — base image never drags or selects */
+#tr-canvas-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+#tr-canvas-wrap img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  pointer-events: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
+}
+.canvas-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  border-radius: 0.5rem;
+  touch-action: none;
+}
+#tr-canvas-rect { cursor: crosshair; z-index: 2; }
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 980px;">
+  <header class="text-center mb-4 px-1 animate__animated animate__fadeIn">
+    <h1 class="h2 fw-bold mb-2">Remove any object — keep the rest</h1>
+    <p class="text-secondary mb-0 mx-auto small" style="max-width: 44rem;">
+      Upload an image, drag <strong class="text-white">rectangles</strong> over what to remove, then apply. Enable <strong class="text-white">Live remove</strong> to run inpaint after each box. The photo does not drag.
+    </p>
+  </header>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="glass-card rounded-3 p-3 h-100 small text-secondary">
+        <i class="bi bi-bounding-box text-info me-1"></i><strong class="text-white">Rectangles</strong> — draw as many boxes as you need over objects or text.
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="glass-card rounded-3 p-3 h-100 small text-secondary">
+        <i class="bi bi-layers text-info me-1"></i><strong class="text-white">Background</strong> — inpainting synthesizes texture from the area around your selection.
+      </div>
+    </div>
+  </div>
+
+  <div class="glass-card rounded-4 p-3 p-md-4 mb-3">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+      <div class="d-flex align-items-center gap-2">
+        <span class="step-badge">1</span>
+        <h2 class="h6 mb-0 fw-semibold text-white">Image</h2>
+      </div>
+      <span class="badge rounded-pill bg-secondary bg-opacity-50 text-secondary fw-normal">Max {{ max_mb }} MB</span>
+    </div>
+    <input type="file" id="tr-file" accept="image/*" class="form-control form-control-sm border-secondary bg-dark text-secondary mb-2" aria-label="Choose image">
+    <p class="small text-secondary mb-0"><i class="bi bi-shield-check me-1"></i>Server-side <strong class="text-white">LaMa</strong> AI inpainting when available; otherwise OpenCV fallback. First LaMa use may download the model once (~200&nbsp;MB).</p>
+  </div>
+
+  <div id="tr-workspace" class="glass-card rounded-4 p-3 p-md-4 mb-3" style="display: none;">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+      <div class="d-flex align-items-center gap-2">
+        <span class="step-badge">2</span>
+        <h2 class="h6 mb-0 fw-semibold text-white">Selection</h2>
+      </div>
+      <span class="badge rounded-pill bg-secondary bg-opacity-50 text-secondary fw-normal"><i class="bi bi-bounding-box me-1"></i>Rectangle tool</span>
+    </div>
+
+    <div id="rect-options" class="d-flex flex-wrap gap-2 mb-2 align-items-center">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-3" id="tr-undo" disabled><i class="bi bi-arrow-90deg-left"></i> Undo box</button>
+      <button type="button" class="btn btn-sm btn-outline-danger rounded-3" id="tr-clear" disabled><i class="bi bi-trash"></i> Clear boxes</button>
+    </div>
+
+    <p class="small text-secondary mb-3" id="tr-hint-rect"><i class="bi bi-mouse2 me-1"></i>Drag on the overlay to box each region to remove. Add many boxes if needed.</p>
+
+    <div class="text-center mb-3 overflow-auto">
+      <div class="border border-secondary border-opacity-25 rounded-3 bg-black bg-opacity-25 mx-auto" id="tr-canvas-wrap">
+        <img id="tr-img" alt="" src="" draggable="false" data-no-drag="1">
+        <canvas id="tr-canvas-rect" class="canvas-layer" aria-hidden="true" role="presentation"></canvas>
+      </div>
+    </div>
+    <p class="small text-muted text-center mb-2"><i class="bi bi-hand-index-thumb me-1"></i>Draw on the overlay only — the photo does not move.</p>
+
+    <div class="form-check form-switch mb-3 d-flex justify-content-center">
+      <input class="form-check-input" type="checkbox" id="tr-live" checked>
+      <label class="form-check-label small ms-2" for="tr-live"><strong>Live remove</strong> — auto-apply after each box (debounced). Off = use “Apply” only.</label>
+    </div>
+
+    <div class="row g-3 align-items-end mb-3">
+      <div class="col-md-8">
+        <label class="form-label small text-secondary mb-1" for="tr-radius">Inpaint blend (radius)</label>
+        <input type="range" class="form-range" id="tr-radius" min="4" max="28" step="1" value="10">
+        <div class="d-flex justify-content-between small text-secondary"><span>Fine (4)</span><span id="tr-radius-val" class="text-info">10</span><span>Wide (28)</span></div>
+        <p class="small text-muted mb-0 mt-1">Large selections use a tighter blend automatically when using the classical fallback. If a spot looks too smooth, lower the radius and apply again.</p>
+      </div>
+      <div class="col-md-4">
+        <span class="badge bg-secondary bg-opacity-50 text-wrap w-100 py-2" id="tr-status">No selection</span>
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <button type="button" class="btn btn-primary-gradient rounded-3 px-4" id="tr-run" disabled>
+        <i class="bi bi-magic me-1"></i>Apply now
+      </button>
+      <div id="tr-busy" class="d-none align-items-center gap-2 text-info small">
+        <span class="spinner-border spinner-border-sm" role="status"></span> <span id="tr-busy-txt">Removing…</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="tr-result" class="glass-card rounded-4 p-3 p-md-4 mb-3" style="display: none;">
+    <h2 class="h6 fw-semibold text-white mb-3"><i class="bi bi-check-circle text-success me-2"></i>Result</h2>
+    <div class="text-center mb-3 border border-secondary border-opacity-25 rounded-3 overflow-hidden bg-dark">
+      <img id="tr-result-img" alt="" draggable="false" class="w-100 user-select-none" style="max-height: 55vh; object-fit: contain;">
+    </div>
+    <button type="button" class="btn btn-success rounded-3" id="tr-dl"><i class="bi bi-download me-1"></i>Download PNG</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  window.TEXTREMOVER = { apiUrl: "{{ remove_text_api_url|escapejs }}", maxMb: {{ max_mb }} };
+</script>
+<script>
+(function () {
+  var apiUrl = window.TEXTREMOVER.apiUrl;
+  var maxMb = window.TEXTREMOVER.maxMb;
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+
+  var fileInput = document.getElementById('tr-file');
+  var workspace = document.getElementById('tr-workspace');
+  var imgEl = document.getElementById('tr-img');
+  var canvasRect = document.getElementById('tr-canvas-rect');
+  var ctxR = canvasRect.getContext('2d');
+  var wrap = document.getElementById('tr-canvas-wrap');
+
+  var btnUndo = document.getElementById('tr-undo');
+  var btnClear = document.getElementById('tr-clear');
+  var btnRun = document.getElementById('tr-run');
+  var trBusy = document.getElementById('tr-busy');
+  var radiusEl = document.getElementById('tr-radius');
+  var radiusVal = document.getElementById('tr-radius-val');
+  var trStatus = document.getElementById('tr-status');
+  var resultBox = document.getElementById('tr-result');
+  var resultImg = document.getElementById('tr-result-img');
+  var btnDl = document.getElementById('tr-dl');
+
+  var fileRef = null;
+  var workingBlob = null;
+  var displayObjectUrl = null;
+  var regions = [];
+  var drag = null;
+  var resultBlob = null;
+
+  var requestSeq = 0;
+  var inflight = false;
+  var pendingAgain = false;
+  var liveDebounce = null;
+  var liveCheckbox = document.getElementById('tr-live');
+
+  function syncCanvasSize() {
+    if (!imgEl.naturalWidth) return;
+    var w = Math.round(imgEl.clientWidth);
+    var h = Math.round(imgEl.clientHeight);
+    if (w < 2 || h < 2) return;
+
+    var temp = document.createElement('canvas');
+    temp.width = canvasRect.width;
+    temp.height = canvasRect.height;
+    if (temp.width > 0 && temp.height > 0) {
+      temp.getContext('2d').drawImage(canvasRect, 0, 0);
+    }
+    canvasRect.width = w;
+    canvasRect.height = h;
+    if (temp.width > 0 && temp.height > 0) {
+      ctxR.imageSmoothingEnabled = false;
+      ctxR.drawImage(temp, 0, 0, temp.width, temp.height, 0, 0, w, h);
+    }
+    canvasRect.style.width = w + 'px';
+    canvasRect.style.height = h + 'px';
+    redrawRects();
+  }
+
+  function scheduleLayoutSync() {
+    syncCanvasSize();
+    requestAnimationFrame(function () {
+      syncCanvasSize();
+    });
+  }
+
+  function blockImageDrag(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  wrap.addEventListener('dragstart', blockImageDrag, true);
+  imgEl.addEventListener('dragstart', blockImageDrag, true);
+  wrap.addEventListener('selectstart', blockImageDrag, true);
+  wrap.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  function redrawRects() {
+    ctxR.clearRect(0, 0, canvasRect.width, canvasRect.height);
+    regions.forEach(function (r) {
+      ctxR.fillStyle = 'rgba(250, 204, 21, 0.2)';
+      ctxR.strokeStyle = 'rgba(250, 204, 21, 0.95)';
+      ctxR.lineWidth = 2;
+      ctxR.fillRect(r.x * canvasRect.width, r.y * canvasRect.height, r.w * canvasRect.width, r.h * canvasRect.height);
+      ctxR.strokeRect(r.x * canvasRect.width, r.y * canvasRect.height, r.w * canvasRect.width, r.h * canvasRect.height);
+    });
+    if (drag) {
+      ctxR.fillStyle = 'rgba(56, 189, 248, 0.2)';
+      ctxR.strokeStyle = 'rgba(56, 189, 248, 0.9)';
+      ctxR.lineWidth = 2;
+      var x0 = drag.x0, y0 = drag.y0, x1 = drag.x1, y1 = drag.y1;
+      ctxR.fillRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+      ctxR.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+    }
+  }
+
+  function normRect(x0, y0, x1, y1) {
+    var l = Math.min(x0, x1), r = Math.max(x0, x1), t = Math.min(y0, y1), b = Math.max(y0, y1);
+    var iw = canvasRect.width, ih = canvasRect.height;
+    if (iw < 2 || ih < 2) return null;
+    var nx = l / iw, ny = t / ih, nw = (r - l) / iw, nh = (b - t) / ih;
+    if (nw * nh < 0.000015) return null;
+    return { x: nx, y: ny, w: nw, h: nh };
+  }
+
+  function clientToCanvas(cnv, clientX, clientY) {
+    var rect = cnv.getBoundingClientRect();
+    var sx = cnv.width / rect.width;
+    var sy = cnv.height / rect.height;
+    return { x: (clientX - rect.left) * sx, y: (clientY - rect.top) * sy };
+  }
+
+  function revokeDisplayUrl() {
+    if (displayObjectUrl) {
+      URL.revokeObjectURL(displayObjectUrl);
+      displayObjectUrl = null;
+    }
+  }
+
+  function imageBlobForApi() {
+    return workingBlob || fileRef;
+  }
+
+  function setBusy(on, msg) {
+    var el = document.getElementById('tr-busy-txt');
+    if (el && msg) el.textContent = msg;
+    if (on) {
+      trBusy.classList.remove('d-none');
+      trBusy.classList.add('d-flex');
+    } else {
+      trBusy.classList.add('d-none');
+      trBusy.classList.remove('d-flex');
+    }
+  }
+
+  function afterSuccessfulInpaint(blob) {
+    resultBlob = blob;
+    revokeDisplayUrl();
+    displayObjectUrl = URL.createObjectURL(blob);
+    imgEl.src = displayObjectUrl;
+    if (resultImg.src && resultImg.src.indexOf('blob:') === 0) URL.revokeObjectURL(resultImg.src);
+    resultImg.src = URL.createObjectURL(blob);
+    resultBox.style.display = 'block';
+    workingBlob = blob;
+    regions = [];
+    drag = null;
+    redrawRects();
+    imgEl.onload = function () {
+      scheduleLayoutSync();
+      updateUi();
+    };
+    if (!liveEnabled()) {
+      resultBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  function runInpaintFromUi() {
+    var imgPart = imageBlobForApi();
+    if (!imgPart) return;
+    if (regions.length === 0) return;
+
+    if (inflight) {
+      pendingAgain = true;
+      return;
+    }
+    var seq = ++requestSeq;
+    inflight = true;
+    setBusy(true, 'Removing…');
+
+    function done() {
+      inflight = false;
+      setBusy(false);
+      if (pendingAgain) {
+        pendingAgain = false;
+        setTimeout(runInpaintFromUi, 80);
+      }
+    }
+
+    function fail(err) {
+      done();
+      alert(err.message || 'Failed');
+    }
+
+    function ok(blob) {
+      if (seq !== requestSeq) {
+        done();
+        return;
+      }
+      afterSuccessfulInpaint(blob);
+      done();
+    }
+
+    var fd = new FormData();
+    fd.append('image', imgPart, 'image.png');
+    fd.append('regions', JSON.stringify(regions));
+    fd.append('radius', radiusEl.value);
+    fetch(apiUrl, { method: 'POST', headers: { 'X-CSRFToken': csrf() }, body: fd })
+      .then(function (res) {
+        if (!res.ok) {
+          var ct = res.headers.get('content-type') || '';
+          if (ct.indexOf('application/json') !== -1) {
+            return res.json().then(function (j) { throw new Error(j.error || 'Failed'); });
+          }
+          throw new Error('Server error (' + res.status + ')');
+        }
+        return res.blob();
+      })
+      .then(ok)
+      .catch(fail);
+  }
+
+  function liveEnabled() {
+    return liveCheckbox && liveCheckbox.checked;
+  }
+
+  function scheduleLiveApply() {
+    if (!liveEnabled()) return;
+    clearTimeout(liveDebounce);
+    liveDebounce = setTimeout(function () {
+      liveDebounce = null;
+      runInpaintFromUi();
+    }, 420);
+  }
+
+  function updateUi() {
+    var n = regions.length;
+    var hasImg = !!imageBlobForApi();
+    trStatus.textContent = n === 0 ? 'No rectangles' : (n + ' box' + (n === 1 ? '' : 'es'));
+    btnUndo.disabled = n === 0;
+    btnClear.disabled = n === 0;
+    btnRun.disabled = !hasImg || n === 0;
+  }
+
+  canvasRect.addEventListener('mousedown', function (e) {
+    if (!imageBlobForApi()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var p = clientToCanvas(canvasRect, e.clientX, e.clientY);
+    drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+    redrawRects();
+  });
+
+  function rectDragMove(e) {
+    if (!drag) return;
+    e.preventDefault();
+    var p = clientToCanvas(canvasRect, e.clientX, e.clientY);
+    drag.x1 = p.x;
+    drag.y1 = p.y;
+    redrawRects();
+  }
+  canvasRect.addEventListener('mousemove', rectDragMove);
+  document.addEventListener('mousemove', rectDragMove);
+
+  document.addEventListener('mouseup', function () {
+    if (drag) {
+      var r = normRect(drag.x0, drag.y0, drag.x1, drag.y1);
+      drag = null;
+      if (r) regions.push(r);
+      redrawRects();
+      updateUi();
+      scheduleLiveApply();
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && drag) {
+      drag = null;
+      redrawRects();
+    }
+  });
+
+  radiusEl.addEventListener('input', function () {
+    radiusVal.textContent = radiusEl.value;
+  });
+
+  btnUndo.addEventListener('click', function () {
+    regions.pop();
+    redrawRects();
+    updateUi();
+  });
+  btnClear.addEventListener('click', function () {
+    regions = [];
+    redrawRects();
+    updateUi();
+  });
+
+  fileInput.addEventListener('change', function () {
+    var f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    if (!f.type.match(/^image\//)) {
+      alert('Choose an image file.');
+      return;
+    }
+    if (f.size > maxMb * 1024 * 1024) {
+      alert('File too large.');
+      return;
+    }
+    fileRef = f;
+    workingBlob = null;
+    requestSeq += 1;
+    revokeDisplayUrl();
+    regions = [];
+    drag = null;
+    resultBox.style.display = 'none';
+    if (resultImg.src && resultImg.src.indexOf('blob:') === 0) URL.revokeObjectURL(resultImg.src);
+    resultBlob = null;
+    imgEl.onload = function () {
+      scheduleLayoutSync();
+      workspace.style.display = 'block';
+      redrawRects();
+      updateUi();
+    };
+    imgEl.src = URL.createObjectURL(f);
+  });
+
+  var resizeT = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(scheduleLayoutSync, 120);
+  });
+
+  btnRun.addEventListener('click', function () {
+    runInpaintFromUi();
+  });
+
+  btnDl.addEventListener('click', function () {
+    if (!resultBlob) return;
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(resultBlob);
+    a.download = 'object-removed.png';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1500);
+  });
+
+  if (liveCheckbox) liveCheckbox.addEventListener('change', updateUi);
+  updateUi();
+})();
+</script>
+{% endblock %}

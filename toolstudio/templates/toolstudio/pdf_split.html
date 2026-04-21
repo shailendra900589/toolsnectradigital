@@ -1,0 +1,173 @@
+{% extends "toolstudio/base.html" %}
+{% load static %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1150px;">
+  {% include "toolstudio/_tool_nav.html" with breadcrumb="Split PDF" %}
+  <h1 class="h3 text-white mb-2">Split PDF <span class="badge bg-info bg-opacity-25 text-info small">Advanced</span></h1>
+  <p class="text-secondary small mb-4">Live page thumbnails · ZIP (one PDF per page) or extract a <strong class="text-white">page range</strong> into a single PDF.</p>
+
+  {% if error %}
+  <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+  {% endif %}
+
+  <div class="row g-4 split-workspace">
+    <div class="col-lg-7">
+      <h2 class="h6 text-info mb-2"><i class="bi bi-file-earmark-pdf me-1"></i>Source</h2>
+      <label class="drop-zone d-block rounded-4 p-3 text-center small text-secondary mb-3" id="sp-drop">
+        <input type="file" id="sp-file" accept="application/pdf,.pdf" class="d-none">
+        <span id="sp-drop-lbl"><i class="bi bi-upload me-1"></i>Choose or drop a PDF</span>
+      </label>
+      <div class="preview-panel mb-2" style="min-height: 200px;">
+        <canvas id="sp-cv" class="d-none rounded-2"></canvas>
+        <p class="ph mb-0" id="sp-ph">No file loaded</p>
+      </div>
+      <div id="sp-strip" class="d-flex flex-wrap gap-2 justify-content-center pdf-studio-thumbs"></div>
+    </div>
+    <div class="col-lg-5">
+      <h2 class="h6 text-success mb-2"><i class="bi bi-sliders me-1"></i>Mode &amp; output</h2>
+      <div class="glass-card rounded-4 p-3 mb-3">
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="radio" name="split_mode" id="m-zip" value="zip_each" checked>
+          <label class="form-check-label text-secondary" for="m-zip"><strong class="text-white">ZIP</strong> — one PDF per page</label>
+        </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="radio" name="split_mode" id="m-one" value="single_pdf">
+          <label class="form-check-label text-secondary" for="m-one"><strong class="text-white">Single PDF</strong> — extract listed pages only</label>
+        </div>
+        <label class="small text-secondary" for="sp-pages">Pages (for single PDF)</label>
+        <input type="text" class="form-control form-control-sm bg-dark border-secondary mb-2" id="sp-pages" placeholder="e.g. 1,3-5,8" disabled autocomplete="off">
+        <p class="small text-muted mb-0" id="sp-hint">Select ZIP mode, or choose Single PDF and list pages.</p>
+      </div>
+      <button type="button" class="btn btn-info rounded-3" id="sp-go" disabled>Run &amp; download</button>
+      <div class="preview-panel mt-3" id="sp-out-wrap">
+        <p class="ph mb-0 small" id="sp-out-ph">Output preview (PDF) or download ZIP.</p>
+        <iframe id="sp-iframe" class="d-none w-100 rounded-2 border-0" style="min-height: 280px;" title="Output"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { loadPdfFromFile, renderPageToCanvas, renderThumbStrip, formatBytes } from "{% static 'toolstudio/js/advanced-pdf.js' %}";
+import { rejectOversizeFiles, parseToolErrorResponse } from "{% static 'toolstudio/js/tool-errors.js' %}";
+
+let curFile = null;
+const inp = document.getElementById("sp-file");
+const drop = document.getElementById("sp-drop");
+const cv = document.getElementById("sp-cv");
+const ph = document.getElementById("sp-ph");
+const strip = document.getElementById("sp-strip");
+const mZip = document.getElementById("m-zip");
+const mOne = document.getElementById("m-one");
+const pagesEl = document.getElementById("sp-pages");
+
+function csrf() {
+  const m = document.querySelector('meta[name="csrf-token"]');
+  return m ? m.content : "";
+}
+
+function syncMode() {
+  const single = mOne.checked;
+  pagesEl.disabled = !single;
+  document.getElementById("sp-hint").textContent = single
+    ? "Pages are inclusive (e.g. 2-4 = pages 2,3,4)."
+    : "You will get a ZIP with one PDF per page.";
+}
+mZip.addEventListener("change", syncMode);
+mOne.addEventListener("change", syncMode);
+syncMode();
+
+async function onPick(file) {
+  if (!file) return;
+  const one = rejectOversizeFiles([file], "PDF");
+  file = one[0] || null;
+  if (!file) return;
+  const ok = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+  if (!ok) {
+    ph.classList.remove("d-none");
+    ph.textContent = "Choose a PDF file.";
+    cv.classList.add("d-none");
+    return;
+  }
+  curFile = file;
+  document.getElementById("sp-drop-lbl").textContent = file.name + " · " + formatBytes(file.size);
+  ph.classList.remove("d-none");
+  ph.textContent = "Rendering preview…";
+  cv.classList.add("d-none");
+  strip.innerHTML = "";
+  document.getElementById("sp-go").disabled = true;
+  try {
+    const pdf = await loadPdfFromFile(file);
+    await renderPageToCanvas(pdf, 1, cv, 640);
+    await renderThumbStrip(file, strip, 16, 100);
+    ph.classList.add("d-none");
+    cv.classList.remove("d-none");
+    document.getElementById("sp-go").disabled = false;
+  } catch (err) {
+    ph.classList.remove("d-none");
+    ph.textContent = err && err.message ? err.message : "Could not preview PDF.";
+    cv.classList.add("d-none");
+    curFile = null;
+  }
+}
+
+inp.addEventListener("change", () => onPick(inp.files && inp.files[0]));
+drop.addEventListener("click", () => inp.click());
+["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("dragover"); }));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("dragover"); }));
+drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) onPick(f); });
+
+document.getElementById("sp-go").addEventListener("click", async () => {
+  if (!curFile) return;
+  const fd = new FormData();
+  fd.append("csrfmiddlewaretoken", csrf());
+  fd.append("pdf", curFile);
+  fd.append("split_mode", mOne.checked ? "single_pdf" : "zip_each");
+  if (mOne.checked) fd.append("pages", pagesEl.value.trim());
+  const outPh = document.getElementById("sp-out-ph");
+  const iframe = document.getElementById("sp-iframe");
+  iframe.classList.add("d-none");
+  outPh.textContent = "Working…";
+  try {
+    const res = await fetch("{% url 'toolstudio_pdf_split' %}", {
+      method: "POST",
+      body: fd,
+      headers: { "X-CSRFToken": csrf() },
+      credentials: "same-origin",
+    });
+    if (!res.ok) {
+      const msg = await parseToolErrorResponse(res);
+      outPh.textContent = msg;
+      outPh.classList.remove("d-none");
+      throw new Error(msg);
+    }
+    const ct = res.headers.get("content-type") || "";
+    const blob = await res.blob();
+    if (ct.indexOf("pdf") !== -1) {
+      const u = URL.createObjectURL(blob);
+      iframe.src = u + "#toolbar=0";
+      iframe.classList.remove("d-none");
+      outPh.classList.add("d-none");
+      const a = document.createElement("a");
+      a.href = u;
+      a.download = "extracted-pages.pdf";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } else {
+      outPh.textContent = "ZIP ready — downloading…";
+      outPh.classList.remove("d-none");
+      const u = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = u;
+      a.download = "split-pages.zip";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(u), 3000);
+    }
+  } catch (e) {
+    outPh.textContent = (e && e.message) ? e.message : "Failed. Check page list or file.";
+    outPh.classList.remove("d-none");
+  }
+});
+</script>
+{% endblock %}

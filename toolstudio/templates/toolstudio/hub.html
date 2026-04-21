@@ -1,0 +1,371 @@
+{% extends "toolstudio/base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block extra_head %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { font-family: 'Inter', system-ui, sans-serif; }
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    border-radius: 2rem;
+    background: rgba(56,189,248,0.08);
+    border: 1px solid rgba(56,189,248,0.2);
+    color: #38bdf8;
+    margin-bottom: 1rem;
+  }
+  .hero-title {
+    font-size: 2.2rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    line-height: 1.2;
+    margin-bottom: 0.75rem;
+  }
+  .hero-sub {
+    font-size: 0.92rem;
+    color: #64748b;
+    max-width: 550px;
+    margin: 0 auto 2rem;
+    line-height: 1.6;
+  }
+
+  /* Featured cards */
+  .feature-card {
+    position: relative;
+    background: linear-gradient(145deg, rgba(20,28,40,0.95) 0%, rgba(14,20,30,0.98) 100%);
+    border: 1px solid rgba(148,163,184,0.08);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+    overflow: hidden;
+    text-decoration: none !important;
+    display: block;
+    height: 100%;
+  }
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent,#38bdf8), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .feature-card:hover {
+    border-color: rgba(148,163,184,0.15);
+    transform: translateY(-3px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+  }
+  .feature-card:hover::before { opacity: 1; }
+
+  .card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 0.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    margin-bottom: 0.75rem;
+    background: var(--icon-bg, rgba(56,189,248,0.1));
+    color: var(--icon-color, #38bdf8);
+  }
+  .card-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 0.35rem;
+  }
+  .card-desc {
+    font-size: 0.78rem;
+    color: #64748b;
+    line-height: 1.5;
+    margin-bottom: 0;
+  }
+  .card-badge {
+    display: inline-block;
+    font-size: 0.58rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Featured large cards */
+  .featured-card {
+    position: relative;
+    background: linear-gradient(145deg, rgba(20,28,40,0.95) 0%, rgba(14,20,30,0.98) 100%);
+    border: 1px solid rgba(148,163,184,0.1);
+    border-radius: 1.2rem;
+    padding: 2rem;
+    transition: all 0.3s ease;
+    overflow: hidden;
+    text-decoration: none !important;
+    display: block;
+  }
+  .featured-card::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    border-radius: 1.3rem;
+    background: var(--gradient);
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .featured-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+    border-color: transparent;
+  }
+  .featured-card:hover::before { opacity: 0.15; }
+
+  .featured-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .featured-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 0.5rem;
+  }
+  .featured-desc {
+    font-size: 0.82rem;
+    color: #94a3b8;
+    line-height: 1.6;
+    margin-bottom: 0.75rem;
+  }
+  .featured-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .featured-tag {
+    font-size: 0.58rem;
+    font-weight: 500;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.3rem;
+    background: rgba(148,163,184,0.06);
+    color: #64748b;
+    border: 1px solid rgba(148,163,184,0.08);
+  }
+
+  .section-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #475569;
+    margin-bottom: 0.75rem;
+  }
+  .hub-kbd {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.25rem;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1100px;">
+  <!-- Hero -->
+  <header class="text-center mb-4 px-2 pt-3">
+    <div class="hero-badge"><i class="bi bi-lightning-charge-fill"></i> Free tools · No account</div>
+    <h1 class="hero-title">PDF &amp; Image Tools</h1>
+    <p class="hero-sub">Merge, split, compress, edit, and enhance files in your browser. Files are sent to this app for processing only and are not kept afterward.</p>
+  </header>
+
+  <div class="mb-4 px-2 mx-auto" style="max-width: 520px;">
+    <label for="hub-tool-search" class="visually-hidden">Search tools</label>
+    <div class="input-group">
+      <span class="input-group-text bg-dark border-secondary text-secondary rounded-start-4"><i class="bi bi-search" aria-hidden="true"></i></span>
+      <input type="search" id="hub-tool-search" class="form-control bg-dark border-secondary text-white rounded-end-4" placeholder="Search tools (merge, rotate, enhance, svg…)" autocomplete="off" enterkeyhint="search">
+    </div>
+    <p class="small text-secondary text-center mt-2 mb-0" id="hub-search-hint"><span class="hub-kbd">/</span> to focus · All tools visible</p>
+  </div>
+
+  <!-- Featured Tools -->
+  <div class="section-label">⭐ Featured tools</div>
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <a href="{% url 'toolstudio_pdf_studio' %}" class="featured-card" data-tool-search="pdf editor annotate text draw shapes signature highlight whiteout image overlay sejda" style="--gradient: linear-gradient(135deg, #0ea5e9, #8b5cf6);">
+        <div class="featured-icon" style="background: linear-gradient(135deg, rgba(14,165,233,0.15), rgba(139,92,246,0.15)); color: #38bdf8;">
+          <i class="bi bi-file-earmark-richtext"></i>
+        </div>
+        <span class="card-badge" style="background: rgba(139,92,246,0.12); color: #a78bfa;">Sejda-style</span>
+        <h2 class="featured-title">PDF Editor</h2>
+        <p class="featured-desc">Full-featured PDF editor: add text with fonts &amp; colors, draw shapes (rectangles, circles, arrows), free-hand drawing, signatures, highlight, underline, strikethrough, whiteout, and image overlays.</p>
+        <div class="featured-tags">
+          <span class="featured-tag">Add Text</span>
+          <span class="featured-tag">Shapes</span>
+          <span class="featured-tag">Draw</span>
+          <span class="featured-tag">Sign</span>
+          <span class="featured-tag">Highlight</span>
+          <span class="featured-tag">Whiteout</span>
+          <span class="featured-tag">Images</span>
+          <span class="featured-tag">Color Picker</span>
+        </div>
+      </a>
+    </div>
+    <div class="col-md-6">
+      <a href="{% url 'toolstudio_image_enhance' %}" class="featured-card" data-tool-search="ai image enhance upscale denoise deblur face color brightness sharpen photo" style="--gradient: linear-gradient(135deg, #10b981, #0ea5e9);">
+        <div class="featured-icon" style="background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(14,165,233,0.15)); color: #34d399;">
+          <i class="bi bi-stars"></i>
+        </div>
+        <span class="card-badge" style="background: rgba(16,185,129,0.12); color: #34d399;">Cutout.pro-style</span>
+        <h2 class="featured-title">AI Image Enhancer</h2>
+        <p class="featured-desc">Professional enhancer with real-time before/after comparison slider. Upscale 2×/4×, denoise, deblur, face enhance, color correction, and brightness/contrast/saturation controls.</p>
+        <div class="featured-tags">
+          <span class="featured-tag">Before/After</span>
+          <span class="featured-tag">Upscale 4×</span>
+          <span class="featured-tag">Denoise</span>
+          <span class="featured-tag">Deblur</span>
+          <span class="featured-tag">Face AI</span>
+          <span class="featured-tag">Color Fix</span>
+          <span class="featured-tag">Presets</span>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <!-- PDF Tools -->
+  <div class="section-label mt-4">📄 PDF tools</div>
+  <div class="row g-3 mb-4">
+    <div class="col-md-6 col-lg-4">
+      <a href="{% url 'toolstudio_pdf_merge' %}" class="feature-card" data-tool-search="merge pdf combine join multiple documents" style="--accent:#0ea5e9; --icon-bg:rgba(14,165,233,0.1); --icon-color:#38bdf8;">
+        <div class="card-icon"><i class="bi bi-layers-fill"></i></div>
+        <h2 class="card-title">Merge PDF</h2>
+        <p class="card-desc">Combine multiple PDFs into one document. Drag-and-drop ordering.</p>
+      </a>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <a href="{% url 'toolstudio_pdf_split' %}" class="feature-card" data-tool-search="split pdf pages zip extract range separate" style="--accent:#8b5cf6; --icon-bg:rgba(139,92,246,0.1); --icon-color:#a78bfa;">
+        <div class="card-icon"><i class="bi bi-scissors"></i></div>
+        <h2 class="card-title">Split PDF</h2>
+        <p class="card-desc">Split into individual pages (ZIP) or extract specific pages.</p>
+      </a>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <a href="{% url 'toolstudio_pdf_extract' %}" class="feature-card" data-tool-search="extract pdf text images zip ocr copy" style="--accent:#f97316; --icon-bg:rgba(249,115,22,0.1); --icon-color:#fb923c;">
+        <div class="card-icon"><i class="bi bi-file-earmark-zip"></i></div>
+        <h2 class="card-title">Extract from PDF</h2>
+        <p class="card-desc">Extract plain text or embedded images from any PDF.</p>
+      </a>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <a href="{% url 'toolstudio_pdf_create_photos' %}" class="feature-card" data-tool-search="pdf from photos images jpg png pictures album scan" style="--accent:#10b981; --icon-bg:rgba(16,185,129,0.1); --icon-color:#34d399;">
+        <div class="card-icon"><i class="bi bi-images"></i></div>
+        <h2 class="card-title">PDF from Photos</h2>
+        <p class="card-desc">Turn JPG/PNG images into a single PDF document.</p>
+      </a>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <a href="{% url 'toolstudio_pdf_compress' %}" class="feature-card" data-tool-search="compress pdf smaller file size optimize shrink" style="--accent:#eab308; --icon-bg:rgba(234,179,8,0.1); --icon-color:#facc15;">
+        <div class="card-icon"><i class="bi bi-file-earmark-arrow-down"></i></div>
+        <h2 class="card-title">Compress PDF</h2>
+        <p class="card-desc">Reduce PDF file size with lossless compression.</p>
+      </a>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <a href="{% url 'toolstudio_pdf_rotate' %}" class="feature-card" data-tool-search="rotate pdf turn pages 90 180 270 degrees sideways scan" style="--accent:#ec4899; --icon-bg:rgba(236,72,153,0.1); --icon-color:#f472b6;">
+        <div class="card-icon"><i class="bi bi-arrow-clockwise"></i></div>
+        <h2 class="card-title">Rotate PDF</h2>
+        <p class="card-desc">Rotate all pages 90°, 180°, or 270° clockwise.</p>
+      </a>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <a href="{% url 'toolstudio_pdf_editor' %}" class="feature-card" data-tool-search="remove pages delete pdf cut drop pages" style="--accent:#ef4444; --icon-bg:rgba(239,68,68,0.1); --icon-color:#f87171;">
+        <div class="card-icon"><i class="bi bi-file-earmark-minus"></i></div>
+        <h2 class="card-title">Remove Pages</h2>
+        <p class="card-desc">Delete unwanted pages by number from your PDF.</p>
+      </a>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <a href="{% url 'toolstudio_pdf_password_remover' %}" class="feature-card" data-tool-search="unlock pdf password remove decrypt protected" style="--accent:#f59e0b; --icon-bg:rgba(245,158,11,0.1); --icon-color:#fbbf24;">
+        <div class="card-icon"><i class="bi bi-unlock"></i></div>
+        <h2 class="card-title">Unlock PDF</h2>
+        <p class="card-desc">Remove password protection and restrictions.</p>
+      </a>
+    </div>
+  </div>
+
+  <!-- Image Tools -->
+  <div class="section-label mt-4">🖼️ Image tools</div>
+  <div class="row g-3 mb-4">
+    <div class="col-md-6 col-lg-4">
+      <a href="{% url 'toolstudio_image_studio' %}" class="feature-card" data-tool-search="image studio crop filter rotate convert webp jpeg png edit" style="--accent:#c084fc; --icon-bg:rgba(192,132,252,0.1); --icon-color:#c084fc;">
+        <div class="card-icon"><i class="bi bi-crop"></i></div>
+        <h2 class="card-title">Image Studio</h2>
+        <p class="card-desc">Interactive browser editor. Crop, filter, rotate, and convert format (PNG/JPEG/WEBP).</p>
+      </a>
+    </div>
+    <div class="col-md-6 col-lg-4">
+      <a href="{% url 'toolstudio_image_vector' %}" class="feature-card" data-tool-search="svg outline vector trace edges line drawing illustration" style="--accent:#818cf8; --icon-bg:rgba(129,140,248,0.1); --icon-color:#a5b4fc;">
+        <div class="card-icon"><i class="bi bi-bezier2"></i></div>
+        <h2 class="card-title">SVG Outline</h2>
+        <p class="card-desc">Convert photo edges into vector SVG line drawings.</p>
+      </a>
+    </div>
+  </div>
+
+  <p class="text-center small text-secondary mt-4 mb-0" style="padding-bottom:2rem;">
+    Also try <a href="{% url 'imagetools_index' %}" class="text-info text-decoration-none" data-tool-search="background remove bg transparent cutout ai">AI background removal</a> and
+    <a href="{% url 'imagetools_text_remover' %}" class="text-info text-decoration-none" data-tool-search="erase text object inpaint remove watermark lama">object / text erase</a>.
+  </p>
+</div>
+
+<script>
+(function () {
+  var input = document.getElementById("hub-tool-search");
+  if (!input) return;
+  var anchors = document.querySelectorAll("a[data-tool-search]");
+  var hint = document.getElementById("hub-search-hint");
+  function applyFilter() {
+    var q = input.value.trim().toLowerCase().replace(/\s+/g, " ");
+    var shown = 0;
+    anchors.forEach(function (a) {
+      var hay = (a.getAttribute("data-tool-search") || "").toLowerCase();
+      var show = !q || hay.indexOf(q) !== -1;
+      var col = a.closest("[class*=\"col-\"]");
+      if (col) col.classList.toggle("d-none", !show);
+      if (show) shown += 1;
+    });
+    if (hint) {
+      hint.innerHTML = q
+        ? ("Showing " + shown + " tool(s)")
+        : ("<span class=\"hub-kbd\">/</span> to focus · All tools visible");
+    }
+  }
+  input.addEventListener("input", applyFilter);
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+    var t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    e.preventDefault();
+    input.focus();
+  });
+})();
+</script>
+{% endblock %}

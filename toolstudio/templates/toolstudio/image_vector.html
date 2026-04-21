@@ -1,0 +1,122 @@
+{% extends "toolstudio/base.html" %}
+{% load static %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1100px;">
+  {% include "toolstudio/_tool_nav.html" with breadcrumb="SVG outline" %}
+  <h1 class="h3 text-white mb-2">Image → SVG outline</h1>
+  <p class="text-secondary small mb-4">Automated edge trace for a stylized outline. <strong class="text-white">Left</strong> = source, <strong class="text-white">right</strong> = generated SVG preview.</p>
+
+  {% if error %}
+  <div class="alert alert-danger py-2 small">{{ error }}</div>
+  {% endif %}
+
+  <div class="glass-card rounded-4 p-3 p-md-4">
+    <div class="row g-4 split-workspace">
+      <div class="col-md-6">
+        <h2 class="h6 text-info mb-2"><i class="bi bi-image me-1"></i>Source</h2>
+        <div class="preview-panel mb-3" id="vv-in-box">
+          <p class="ph mb-0" id="vv-ph-in">Upload an image</p>
+          <img alt="" id="vv-img-in" class="d-none rounded-2" decoding="async">
+        </div>
+        <input type="file" id="vv-file" accept="image/*" class="form-control form-control-sm bg-dark border-secondary mb-2">
+      </div>
+      <div class="col-md-6">
+        <h2 class="h6 text-warning mb-2"><i class="bi bi-bezier2 me-1"></i>SVG preview</h2>
+        <div class="preview-panel mb-3 bg-dark" id="vv-out-box">
+          <p class="ph mb-0" id="vv-ph-out">Click “Generate outline”</p>
+          <object id="vv-obj" type="image/svg+xml" class="d-none rounded-2 w-100" style="min-height:200px;"></object>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button type="button" class="btn btn-warning btn-sm rounded-3 text-dark" id="vv-go" disabled><i class="bi bi-magic me-1"></i>Generate outline</button>
+          <button type="button" class="btn btn-outline-light btn-sm rounded-3 d-none" id="vv-dl"><i class="bi bi-download me-1"></i>Download SVG</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { rejectOversizeFiles, parseToolErrorResponse } from "{% static 'toolstudio/js/tool-errors.js' %}";
+
+const url = "{% url 'toolstudio_image_vector' %}";
+const fileEl = document.getElementById("vv-file");
+const imgIn = document.getElementById("vv-img-in");
+const phIn = document.getElementById("vv-ph-in");
+const phOut = document.getElementById("vv-ph-out");
+const obj = document.getElementById("vv-obj");
+const btnGo = document.getElementById("vv-go");
+const btnDl = document.getElementById("vv-dl");
+let svgBlob = null;
+let objUrl = null;
+
+function csrf() {
+  const m = document.querySelector('meta[name="csrf-token"]');
+  return m ? m.content : "";
+}
+
+fileEl.addEventListener("change", () => {
+  let f = fileEl.files && fileEl.files[0];
+  if (!f || !f.type.match(/^image\//)) return;
+  const ok = rejectOversizeFiles([f], "Image");
+  f = ok[0] || null;
+  if (!f) return;
+  const u = URL.createObjectURL(f);
+  imgIn.src = u;
+  imgIn.classList.remove("d-none");
+  phIn.classList.add("d-none");
+  btnGo.disabled = false;
+  obj.classList.add("d-none");
+  phOut.classList.remove("d-none");
+  phOut.textContent = "Click Generate outline";
+  btnDl.classList.add("d-none");
+  svgBlob = null;
+  if (objUrl) { URL.revokeObjectURL(objUrl); objUrl = null; }
+});
+
+btnGo.addEventListener("click", async () => {
+  let f = fileEl.files && fileEl.files[0];
+  if (!f) return;
+  const pass = rejectOversizeFiles([f], "Image");
+  f = pass[0] || null;
+  if (!f) return;
+  const fd = new FormData();
+  fd.append("csrfmiddlewaretoken", csrf());
+  fd.append("image", f);
+  fd.append("disposition", "inline");
+  btnGo.disabled = true;
+  phOut.textContent = "Working…";
+  phOut.classList.remove("d-none");
+  try {
+    const res = await fetch(url, { method: "POST", body: fd, headers: { "X-CSRFToken": csrf() }, credentials: "same-origin" });
+    if (!res.ok) {
+      phOut.textContent = await parseToolErrorResponse(res);
+      return;
+    }
+    const blob = await res.blob();
+    svgBlob = blob;
+    if (objUrl) URL.revokeObjectURL(objUrl);
+    objUrl = URL.createObjectURL(blob);
+    obj.data = objUrl;
+    obj.classList.remove("d-none");
+    phOut.classList.add("d-none");
+    btnDl.classList.remove("d-none");
+  } catch {
+    phOut.textContent = "Failed — try another image.";
+  } finally {
+    btnGo.disabled = false;
+  }
+});
+
+btnDl.addEventListener("click", () => {
+  if (!svgBlob) return;
+  const u = URL.createObjectURL(svgBlob);
+  const a = document.createElement("a");
+  a.href = u;
+  a.download = "outline.svg";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(u), 2000);
+});
+</script>
+{% endblock %}

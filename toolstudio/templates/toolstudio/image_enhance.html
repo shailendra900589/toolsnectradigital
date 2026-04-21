@@ -1,0 +1,792 @@
+{% extends "toolstudio/base.html" %}
+{% load static %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block extra_head %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { font-family: 'Inter', system-ui, sans-serif; }
+
+  /* ── Layout ── */
+  .enhancer-workspace { display: grid; grid-template-columns: 320px 1fr; gap: 0; min-height: calc(100vh - 200px); }
+  @media (max-width: 991px) { .enhancer-workspace { grid-template-columns: 1fr; } }
+
+  /* ── Controls Panel ── */
+  .ctrl-panel {
+    background: linear-gradient(180deg, rgba(15,20,30,0.98) 0%, rgba(10,15,22,0.99) 100%);
+    border-right: 1px solid rgba(148,163,184,0.08);
+    padding: 1.25rem;
+    overflow-y: auto;
+    max-height: calc(100vh - 140px);
+  }
+  .ctrl-panel::-webkit-scrollbar { width: 4px; }
+  .ctrl-panel::-webkit-scrollbar-thumb { background: rgba(56,189,248,0.2); border-radius: 2px; }
+
+  .ctrl-section {
+    margin-bottom: 1.25rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(148,163,184,0.08);
+  }
+  .ctrl-section:last-child { border-bottom: none; }
+  .ctrl-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(148,163,184,0.7);
+    font-weight: 600;
+    margin-bottom: 0.6rem;
+  }
+  .ctrl-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #e2e8f0;
+    margin-bottom: 0.15rem;
+  }
+  .ctrl-subtitle {
+    font-size: 0.7rem;
+    color: rgba(148,163,184,0.6);
+    margin-bottom: 0.7rem;
+  }
+
+  /* ── Sliders ── */
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+  }
+  .slider-row label {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    min-width: 70px;
+    flex-shrink: 0;
+  }
+  .slider-row input[type="range"] {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(148,163,184,0.15);
+    border-radius: 2px;
+    outline: none;
+  }
+  .slider-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+    box-shadow: 0 0 8px rgba(56,189,248,0.4);
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .slider-row input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+  }
+  .slider-val {
+    font-size: 0.68rem;
+    color: #38bdf8;
+    min-width: 32px;
+    text-align: right;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Toggle switches ── */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.45rem 0;
+  }
+  .toggle-row label { font-size: 0.75rem; color: #cbd5e1; }
+  .toggle-switch {
+    position: relative;
+    width: 38px;
+    height: 20px;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: rgba(148,163,184,0.2);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.25s;
+  }
+  .toggle-track::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    left: 2px;
+    top: 2px;
+    background: #94a3b8;
+    border-radius: 50%;
+    transition: transform 0.25s, background 0.25s;
+  }
+  .toggle-switch input:checked + .toggle-track {
+    background: rgba(56,189,248,0.35);
+  }
+  .toggle-switch input:checked + .toggle-track::after {
+    transform: translateX(18px);
+    background: #38bdf8;
+  }
+
+  /* ── Upscale buttons ── */
+  .scale-btns { display: flex; gap: 0.35rem; }
+  .scale-btn {
+    flex: 1;
+    padding: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border: 1px solid rgba(148,163,184,0.15);
+    background: rgba(148,163,184,0.05);
+    color: #94a3b8;
+    border-radius: 0.4rem;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+  }
+  .scale-btn:hover { border-color: rgba(56,189,248,0.3); color: #38bdf8; }
+  .scale-btn.active {
+    background: rgba(56,189,248,0.12);
+    border-color: rgba(56,189,248,0.5);
+    color: #38bdf8;
+    box-shadow: 0 0 10px rgba(56,189,248,0.15);
+  }
+
+  /* ── Preview Area ── */
+  .preview-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, rgba(8,12,18,0.95) 0%, rgba(5,8,14,0.98) 100%);
+    position: relative;
+    overflow: hidden;
+    min-height: 500px;
+  }
+
+  /* ── Upload Zone ── */
+  .upload-zone {
+    text-align: center;
+    padding: 3rem 2rem;
+    border: 2px dashed rgba(56,189,248,0.2);
+    border-radius: 1.5rem;
+    background: rgba(56,189,248,0.03);
+    transition: all 0.3s;
+    cursor: pointer;
+    max-width: 480px;
+    width: 90%;
+  }
+  .upload-zone:hover, .upload-zone.dragover {
+    border-color: rgba(56,189,248,0.5);
+    background: rgba(56,189,248,0.06);
+    transform: scale(1.01);
+  }
+  .upload-zone .upload-icon {
+    font-size: 3.5rem;
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 1rem;
+  }
+  .upload-zone h3 {
+    font-size: 1.15rem;
+    color: #e2e8f0;
+    margin-bottom: 0.4rem;
+    font-weight: 600;
+  }
+  .upload-zone p { font-size: 0.8rem; color: #64748b; margin-bottom: 1rem; }
+  .upload-btn {
+    display: inline-block;
+    padding: 0.55rem 1.6rem;
+    background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.8rem;
+    border-radius: 0.6rem;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 15px rgba(14,165,233,0.35);
+  }
+  .upload-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(14,165,233,0.45);
+  }
+
+  /* ── Comparison Container ── */
+  .compare-container {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    max-height: calc(100vh - 220px);
+    overflow: hidden;
+    border-radius: 0.75rem;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+  }
+  .compare-container img {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100vh - 220px);
+    object-fit: contain;
+  }
+  .compare-overlay {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+  .compare-overlay img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  /* ── Divider / Slider Handle ── */
+  .compare-divider {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, #38bdf8, #818cf8);
+    cursor: ew-resize;
+    z-index: 10;
+    box-shadow: 0 0 12px rgba(56,189,248,0.5);
+  }
+  .compare-handle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 20px rgba(14,165,233,0.5);
+    cursor: ew-resize;
+  }
+  .compare-handle i { color: #fff; font-size: 1rem; }
+
+  /* ── Labels ── */
+  .compare-label {
+    position: absolute;
+    top: 12px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-radius: 1rem;
+    backdrop-filter: blur(12px);
+    z-index: 5;
+  }
+  .label-original {
+    left: 12px;
+    background: rgba(0,0,0,0.6);
+    color: #94a3b8;
+    border: 1px solid rgba(148,163,184,0.15);
+  }
+  .label-enhanced {
+    right: 12px;
+    background: rgba(16,185,129,0.2);
+    color: #34d399;
+    border: 1px solid rgba(16,185,129,0.25);
+  }
+
+  /* ── Action bar ── */
+  .action-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    width: 100%;
+    flex-shrink: 0;
+  }
+  .action-bar .btn { font-size: 0.82rem; font-weight: 600; padding: 0.5rem 1.5rem; border-radius: 0.5rem; }
+
+  /* ── Enhance button ── */
+  .btn-enhance {
+    background: linear-gradient(135deg, #10b981, #059669);
+    border: none;
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(16,185,129,0.35);
+    transition: all 0.2s;
+  }
+  .btn-enhance:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(16,185,129,0.45);
+    background: linear-gradient(135deg, #34d399, #10b981);
+    color: #fff;
+  }
+  .btn-enhance:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Processing overlay ── */
+  .processing-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(8px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+  }
+  .processing-spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid rgba(56,189,248,0.15);
+    border-top-color: #38bdf8;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 1rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .processing-text { color: #94a3b8; font-size: 0.85rem; }
+
+  /* ── Image info badge ── */
+  .img-info {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.62rem;
+    background: rgba(0,0,0,0.65);
+    color: #94a3b8;
+    border-radius: 0.35rem;
+    backdrop-filter: blur(8px);
+    z-index: 5;
+  }
+
+  /* ── Preset buttons ── */
+  .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; }
+  .preset-btn {
+    padding: 0.5rem 0.3rem;
+    font-size: 0.68rem;
+    font-weight: 500;
+    border: 1px solid rgba(148,163,184,0.12);
+    background: rgba(148,163,184,0.04);
+    color: #cbd5e1;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+  }
+  .preset-btn i { font-size: 1rem; }
+  .preset-btn:hover {
+    background: rgba(56,189,248,0.08);
+    border-color: rgba(56,189,248,0.25);
+    color: #38bdf8;
+  }
+  .preset-btn.active {
+    background: rgba(56,189,248,0.12);
+    border-color: rgba(56,189,248,0.4);
+    color: #38bdf8;
+  }
+
+  /* ── Reset button ── */
+  .reset-link {
+    font-size: 0.7rem;
+    color: #64748b;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+  .reset-link:hover { color: #f87171; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0" style="max-width: 100%;">
+  {% include "toolstudio/_tool_nav.html" with breadcrumb="Image Enhancer" %}
+
+  <input type="file" id="file-input" accept="image/*" class="d-none">
+
+  <div class="enhancer-workspace">
+    <!-- ═══ CONTROL PANEL ═══ -->
+    <div class="ctrl-panel d-none" id="ctrl-panel">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h2 class="h6 text-white mb-0" style="font-size:0.9rem;"><i class="bi bi-sliders me-1 text-info"></i>Enhance</h2>
+        <a class="reset-link" id="btn-reset" title="Reset all"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset</a>
+      </div>
+
+      <!-- Presets -->
+      <div class="ctrl-section">
+        <div class="ctrl-label">Quick presets</div>
+        <div class="preset-grid">
+          <button class="preset-btn" data-preset="auto"><i class="bi bi-magic text-success"></i>Auto Fix</button>
+          <button class="preset-btn" data-preset="portrait"><i class="bi bi-person text-info"></i>Portrait</button>
+          <button class="preset-btn" data-preset="landscape"><i class="bi bi-tree text-warning"></i>Landscape</button>
+          <button class="preset-btn" data-preset="hdr"><i class="bi bi-brightness-high text-danger"></i>HDR</button>
+        </div>
+      </div>
+
+      <!-- Adjustments -->
+      <div class="ctrl-section">
+        <div class="ctrl-label">Adjustments</div>
+        <div class="slider-row"><label>Brightness</label><input type="range" id="sl-brightness" min="0.2" max="2.5" step="0.05" value="1"><span class="slider-val" id="sv-brightness">1.00</span></div>
+        <div class="slider-row"><label>Contrast</label><input type="range" id="sl-contrast" min="0.2" max="2.5" step="0.05" value="1"><span class="slider-val" id="sv-contrast">1.00</span></div>
+        <div class="slider-row"><label>Saturation</label><input type="range" id="sl-saturation" min="0" max="2.5" step="0.05" value="1"><span class="slider-val" id="sv-saturation">1.00</span></div>
+        <div class="slider-row"><label>Sharpness</label><input type="range" id="sl-sharpness" min="0" max="3" step="0.05" value="1"><span class="slider-val" id="sv-sharpness">1.00</span></div>
+      </div>
+
+      <!-- Restore -->
+      <div class="ctrl-section">
+        <div class="ctrl-label">Restore</div>
+        <div class="slider-row"><label>Denoise</label><input type="range" id="sl-denoise" min="0" max="30" step="1" value="0"><span class="slider-val" id="sv-denoise">0</span></div>
+        <div class="slider-row"><label>Deblur</label><input type="range" id="sl-deblur" min="0" max="4" step="0.1" value="0"><span class="slider-val" id="sv-deblur">0.0</span></div>
+      </div>
+
+      <!-- Color -->
+      <div class="ctrl-section">
+        <div class="ctrl-label">Color</div>
+        <div class="slider-row"><label>Warmth</label><input type="range" id="sl-warmth" min="-1" max="1" step="0.05" value="0"><span class="slider-val" id="sv-warmth">0.00</span></div>
+      </div>
+
+      <!-- Upscale -->
+      <div class="ctrl-section">
+        <div class="ctrl-label">Upscale</div>
+        <div class="scale-btns">
+          <button class="scale-btn active" data-scale="1">1×</button>
+          <button class="scale-btn" data-scale="2">2×</button>
+          <button class="scale-btn" data-scale="4">4×</button>
+        </div>
+      </div>
+
+      <!-- Toggles -->
+      <div class="ctrl-section">
+        <div class="ctrl-label">AI Features</div>
+        <div class="toggle-row">
+          <label><i class="bi bi-stars me-1 text-warning"></i>Auto Enhance</label>
+          <div class="toggle-switch">
+            <input type="checkbox" id="tog-auto">
+            <span class="toggle-track"></span>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <label><i class="bi bi-person-hearts me-1 text-info"></i>Face Enhance</label>
+          <div class="toggle-switch">
+            <input type="checkbox" id="tog-face">
+            <span class="toggle-track"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Enhance button -->
+      <button class="btn btn-enhance w-100 py-2" id="btn-enhance" disabled>
+        <i class="bi bi-lightning-charge me-1"></i>Enhance Image
+      </button>
+    </div>
+
+    <!-- ═══ PREVIEW AREA ═══ -->
+    <div class="preview-area" id="preview-area">
+      <!-- Upload zone (shown initially) -->
+      <div id="upload-zone" class="upload-zone">
+        <div class="upload-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+        <h3>Drop your image here</h3>
+        <p>or click to browse · Supports JPG, PNG, WEBP</p>
+        <button class="upload-btn" id="btn-browse"><i class="bi bi-folder2-open me-1"></i>Choose Image</button>
+        <div class="mt-3" style="font-size:0.68rem; color:#475569;">
+          <i class="bi bi-shield-lock me-1"></i>Your files are processed on this server and never stored
+        </div>
+      </div>
+
+      <!-- Comparison view (hidden initially) -->
+      <div id="compare-wrap" class="d-none" style="width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1;">
+        <div class="compare-container" id="compare-box">
+          <!-- Original image (bottom) -->
+          <img id="img-original" alt="Original" draggable="false">
+          <!-- Enhanced image (overlay, clipped) -->
+          <div class="compare-overlay" id="compare-overlay">
+            <img id="img-enhanced" alt="Enhanced" draggable="false">
+          </div>
+          <!-- Labels -->
+          <span class="compare-label label-original">Original</span>
+          <span class="compare-label label-enhanced">Enhanced</span>
+          <!-- Divider -->
+          <div class="compare-divider" id="compare-divider">
+            <div class="compare-handle"><i class="bi bi-arrows-expand"></i></div>
+          </div>
+          <!-- Image info -->
+          <div class="img-info" id="img-info"></div>
+        </div>
+
+        <!-- Action bar -->
+        <div class="action-bar">
+          <label class="btn btn-outline-secondary btn-sm rounded-3 mb-0" style="font-size:0.78rem;">
+            <i class="bi bi-arrow-repeat me-1"></i>Change Image
+            <input type="file" accept="image/*" class="d-none" id="file-change">
+          </label>
+          <button class="btn btn-outline-info btn-sm rounded-3 d-none" id="btn-download" style="font-size:0.78rem;">
+            <i class="bi bi-download me-1"></i>Download Enhanced
+          </button>
+        </div>
+      </div>
+
+      <!-- Processing overlay -->
+      <div class="processing-overlay d-none" id="processing">
+        <div class="processing-spinner"></div>
+        <div class="processing-text">Enhancing your image…</div>
+        <div class="processing-text" style="font-size:0.72rem; margin-top:0.3rem; color:#475569;">This may take a moment for large images</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var enhanceUrl = "{% url 'toolstudio_image_enhance' %}";
+  var toolErrorsUrl = "{% static 'toolstudio/js/tool-errors.js' %}";
+  var fileInput = document.getElementById('file-input');
+  var fileChange = document.getElementById('file-change');
+  var uploadZone = document.getElementById('upload-zone');
+  var ctrlPanel = document.getElementById('ctrl-panel');
+  var compareWrap = document.getElementById('compare-wrap');
+  var compareBox = document.getElementById('compare-box');
+  var compareOverlay = document.getElementById('compare-overlay');
+  var compareDivider = document.getElementById('compare-divider');
+  var imgOriginal = document.getElementById('img-original');
+  var imgEnhanced = document.getElementById('img-enhanced');
+  var imgInfo = document.getElementById('img-info');
+  var processing = document.getElementById('processing');
+  var btnEnhance = document.getElementById('btn-enhance');
+  var btnDownload = document.getElementById('btn-download');
+  var btnBrowse = document.getElementById('btn-browse');
+  var btnReset = document.getElementById('btn-reset');
+
+  var currentFile = null;
+  var enhancedBlob = null;
+  var originalUrl = null;
+  var enhancedUrl = null;
+  var divPos = 50; // percentage
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+
+  // ── Slider value display ──
+  var sliders = ['brightness', 'contrast', 'saturation', 'sharpness', 'denoise', 'deblur', 'warmth'];
+  sliders.forEach(function (name) {
+    var sl = document.getElementById('sl-' + name);
+    var sv = document.getElementById('sv-' + name);
+    if (!sl || !sv) return;
+    sl.addEventListener('input', function () {
+      var v = parseFloat(sl.value);
+      sv.textContent = (name === 'denoise') ? String(Math.round(v)) : v.toFixed(name === 'deblur' ? 1 : 2);
+    });
+  });
+
+  // ── Scale buttons ──
+  var selectedScale = 1;
+  document.querySelectorAll('.scale-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.scale-btn').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      selectedScale = parseInt(btn.dataset.scale);
+    });
+  });
+
+  // ── Presets ──
+  var presets = {
+    auto: { brightness: 1, contrast: 1, saturation: 1, sharpness: 1, denoise: 0, deblur: 0, warmth: 0, auto: true, face: false },
+    portrait: { brightness: 1.05, contrast: 1.1, saturation: 1.05, sharpness: 1.2, denoise: 5, deblur: 0, warmth: 0.15, auto: false, face: true },
+    landscape: { brightness: 1.05, contrast: 1.2, saturation: 1.2, sharpness: 1.3, denoise: 3, deblur: 0.3, warmth: 0.1, auto: true, face: false },
+    hdr: { brightness: 1.1, contrast: 1.4, saturation: 1.3, sharpness: 1.5, denoise: 5, deblur: 0.5, warmth: 0, auto: true, face: false }
+  };
+  document.querySelectorAll('.preset-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var p = presets[btn.dataset.preset];
+      if (!p) return;
+      document.querySelectorAll('.preset-btn').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      applyValues(p);
+    });
+  });
+
+  function applyValues(p) {
+    setSlider('brightness', p.brightness);
+    setSlider('contrast', p.contrast);
+    setSlider('saturation', p.saturation);
+    setSlider('sharpness', p.sharpness);
+    setSlider('denoise', p.denoise);
+    setSlider('deblur', p.deblur);
+    setSlider('warmth', p.warmth);
+    document.getElementById('tog-auto').checked = !!p.auto;
+    document.getElementById('tog-face').checked = !!p.face;
+  }
+
+  function setSlider(name, val) {
+    var sl = document.getElementById('sl-' + name);
+    var sv = document.getElementById('sv-' + name);
+    if (!sl) return;
+    sl.value = val;
+    if (sv) sv.textContent = (name === 'denoise') ? String(Math.round(val)) : parseFloat(val).toFixed(name === 'deblur' ? 1 : 2);
+  }
+
+  // ── Reset ──
+  btnReset.addEventListener('click', function () {
+    applyValues({ brightness: 1, contrast: 1, saturation: 1, sharpness: 1, denoise: 0, deblur: 0, warmth: 0, auto: false, face: false });
+    selectedScale = 1;
+    document.querySelectorAll('.scale-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.scale === '1'); });
+    document.querySelectorAll('.preset-btn').forEach(function (b) { b.classList.remove('active'); });
+  });
+
+  // ── File loading ──
+  function loadFile(file) {
+    if (!file || !file.type.match(/^image\//)) return;
+    if (window.TOOLSTUDIO_UPLOAD && file.size > window.TOOLSTUDIO_UPLOAD.maxBytes) {
+      alert('Image is larger than ' + window.TOOLSTUDIO_UPLOAD.maxMb + ' MB (this app\'s limit).');
+      return;
+    }
+    currentFile = file;
+    if (originalUrl) URL.revokeObjectURL(originalUrl);
+    if (enhancedUrl) URL.revokeObjectURL(enhancedUrl);
+    originalUrl = URL.createObjectURL(file);
+    enhancedUrl = null;
+    enhancedBlob = null;
+
+    imgOriginal.src = originalUrl;
+    imgEnhanced.src = originalUrl;
+    imgOriginal.onload = function () {
+      imgInfo.textContent = imgOriginal.naturalWidth + ' × ' + imgOriginal.naturalHeight + ' · ' + (file.size / 1024).toFixed(0) + ' KB';
+      uploadZone.classList.add('d-none');
+      compareWrap.classList.remove('d-none');
+      compareWrap.style.display = 'flex';
+      ctrlPanel.classList.remove('d-none');
+      btnEnhance.disabled = false;
+      btnDownload.classList.add('d-none');
+      setDividerPos(50);
+    };
+  }
+
+  btnBrowse.addEventListener('click', function () { fileInput.click(); });
+  uploadZone.addEventListener('click', function (e) { if (e.target === uploadZone || e.target.closest('.upload-zone')) fileInput.click(); });
+  fileInput.addEventListener('change', function () { loadFile(fileInput.files && fileInput.files[0]); });
+  fileChange.addEventListener('change', function () { loadFile(fileChange.files && fileChange.files[0]); });
+
+  // Drag & drop
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    uploadZone.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); uploadZone.classList.add('dragover'); });
+    document.getElementById('preview-area').addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    uploadZone.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); uploadZone.classList.remove('dragover'); });
+  });
+  uploadZone.addEventListener('drop', function (e) {
+    var f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) loadFile(f);
+  });
+  document.getElementById('preview-area').addEventListener('drop', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) loadFile(f);
+  });
+
+  // ── Comparison slider ──
+  function setDividerPos(pct) {
+    divPos = Math.max(0, Math.min(100, pct));
+    compareDivider.style.left = divPos + '%';
+    compareOverlay.style.clipPath = 'inset(0 0 0 ' + divPos + '%)';
+  }
+
+  var dragging = false;
+  function startDrag(e) {
+    dragging = true;
+    e.preventDefault();
+  }
+  function doDrag(e) {
+    if (!dragging) return;
+    var rect = compareBox.getBoundingClientRect();
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var pct = ((clientX - rect.left) / rect.width) * 100;
+    setDividerPos(pct);
+  }
+  function endDrag() { dragging = false; }
+  compareDivider.addEventListener('mousedown', startDrag);
+  compareDivider.addEventListener('touchstart', startDrag, { passive: false });
+  document.addEventListener('mousemove', doDrag);
+  document.addEventListener('touchmove', doDrag, { passive: false });
+  document.addEventListener('mouseup', endDrag);
+  document.addEventListener('touchend', endDrag);
+
+  // ── Enhance ──
+  btnEnhance.addEventListener('click', function () {
+    if (!currentFile) return;
+    btnEnhance.disabled = true;
+    processing.classList.remove('d-none');
+
+    var fd = new FormData();
+    fd.append('csrfmiddlewaretoken', csrf());
+    fd.append('image', currentFile);
+    fd.append('mode', 'pipeline');
+    fd.append('disposition', 'inline');
+    fd.append('brightness', document.getElementById('sl-brightness').value);
+    fd.append('contrast', document.getElementById('sl-contrast').value);
+    fd.append('sharpness', document.getElementById('sl-sharpness').value);
+    fd.append('saturation', document.getElementById('sl-saturation').value);
+    fd.append('denoise', document.getElementById('sl-denoise').value);
+    fd.append('deblur', document.getElementById('sl-deblur').value);
+    fd.append('warmth', document.getElementById('sl-warmth').value);
+    fd.append('upscale', String(selectedScale));
+    if (document.getElementById('tog-auto').checked) fd.append('auto_enhance', 'on');
+    if (document.getElementById('tog-face').checked) fd.append('face_enhance', 'on');
+
+    fetch(enhanceUrl, { method: 'POST', body: fd, headers: { 'X-CSRFToken': csrf() }, credentials: 'same-origin' })
+      .then(function (res) {
+        if (!res.ok) {
+          return import(toolErrorsUrl).then(function (m) {
+            return m.parseToolErrorResponse(res);
+          }).then(function (msg) { throw new Error(msg); });
+        }
+        return res.blob();
+      })
+      .then(function (blob) {
+        enhancedBlob = blob;
+        if (enhancedUrl) URL.revokeObjectURL(enhancedUrl);
+        enhancedUrl = URL.createObjectURL(blob);
+        imgEnhanced.src = enhancedUrl;
+        imgEnhanced.onload = function () {
+          setDividerPos(50);
+          btnDownload.classList.remove('d-none');
+          imgInfo.textContent = imgEnhanced.naturalWidth + ' × ' + imgEnhanced.naturalHeight + ' · Enhanced';
+        };
+      })
+      .catch(function (err) {
+        alert('Enhancement failed: ' + err.message);
+      })
+      .finally(function () {
+        btnEnhance.disabled = false;
+        processing.classList.add('d-none');
+      });
+  });
+
+  // ── Download ──
+  btnDownload.addEventListener('click', function () {
+    if (!enhancedBlob) return;
+    var u = URL.createObjectURL(enhancedBlob);
+    var a = document.createElement('a');
+    a.href = u;
+    a.download = 'enhanced-image.png';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(u); }, 3000);
+  });
+
+  setDividerPos(50);
+})();
+</script>
+{% endblock %}

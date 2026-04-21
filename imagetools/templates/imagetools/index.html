@@ -1,0 +1,497 @@
+{% extends "imagetools/base.html" %}
+{% block pill_bg %}active{% endblock %}
+{% block footer_note %}Cutout: rembg (U²-Net) + alpha matting{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 940px;">
+  <div class="row g-3 mb-4 animate__animated animate__fadeIn">
+    <div class="col-md-4">
+      <div class="glass-card rounded-3 p-3 h-100 text-center text-md-start">
+        <i class="bi bi-lightning-charge-fill text-info d-block d-md-inline mb-1 mb-md-0 me-md-2" aria-hidden="true"></i>
+        <strong class="text-white">Auto</strong>
+        <p class="small text-secondary mb-0 mt-1">Upload → AI cutout runs automatically with a live progress overlay.</p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="glass-card rounded-3 p-3 h-100 text-center text-md-start">
+        <i class="bi bi-file-earmark-image text-info d-block d-md-inline mb-1 mb-md-0 me-md-2" aria-hidden="true"></i>
+        <strong class="text-white">True PNG alpha</strong>
+        <p class="small text-secondary mb-0 mt-1">Transparent download keeps real transparency — checkerboard is preview-only.</p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="glass-card rounded-3 p-3 h-100 text-center text-md-start">
+        <i class="bi bi-palette text-info d-block d-md-inline mb-1 mb-md-0 me-md-2" aria-hidden="true"></i>
+        <strong class="text-white">Try backdrops</strong>
+        <p class="small text-secondary mb-0 mt-1">Solid, gradients, or your photo — preview before exporting a composite.</p>
+      </div>
+    </div>
+  </div>
+
+  <header class="text-center mb-4 px-1">
+    <h1 class="h2 fw-bold mb-2">Remove background</h1>
+    <p class="text-secondary mb-0 mx-auto small" style="max-width: 38rem;">
+      One upload: we detect the subject and refine edges. Compare <span class="text-white">original vs cutout</span>, tune the preview background, then download.
+    </p>
+    <p class="small text-secondary mt-2 mb-0"><span class="kbd">Tip</span> Drag files onto the drop zone · <span class="kbd">New image</span> clears everything</p>
+  </header>
+
+  <div class="glass-card rounded-4 p-3 p-md-4 mb-3">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <div class="d-flex align-items-center gap-2">
+        <span class="step-badge">1</span>
+        <h2 class="h6 mb-0 fw-semibold text-white">Upload</h2>
+      </div>
+      <span class="badge rounded-pill bg-secondary bg-opacity-50 text-secondary fw-normal">Max {{ max_mb }} MB</span>
+    </div>
+    <div id="drop-zone" class="drop-zone position-relative rounded-3 p-4 text-center mb-2" style="min-height: 8.5rem;">
+      <input type="file" id="file-input" accept="image/*" class="position-absolute opacity-0 w-100 h-100 start-0 top-0" style="z-index: 3; cursor: pointer;" aria-label="Choose image file">
+      <div class="position-relative" style="z-index: 1; pointer-events: none;">
+        <i class="bi bi-cloud-arrow-up fs-3 text-info mb-2 d-block" aria-hidden="true"></i>
+        <p class="fw-medium text-white mb-1">Drop an image or click to browse</p>
+        <p id="file-hint" class="small text-secondary mb-0">PNG, JPEG, WebP</p>
+      </div>
+    </div>
+    <p class="small text-secondary mb-0"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>First visit may download the AI model once (~176 MB). Large images are resized for speed.</p>
+  </div>
+
+  <div id="preview-section" class="glass-card rounded-4 p-3 p-md-4 mb-3" style="display: none;">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+      <div class="d-flex align-items-center gap-2">
+        <span class="step-badge">2</span>
+        <h2 class="h6 mb-0 fw-semibold text-white">Preview</h2>
+      </div>
+      <div class="btn-group btn-group-sm" role="group" aria-label="View">
+        <input type="radio" class="btn-check" name="view_mode" id="vm_cutout" value="cutout" checked autocomplete="off">
+        <label class="btn btn-outline-info" for="vm_cutout"><i class="bi bi-scissors me-1" aria-hidden="true"></i>Cutout</label>
+        <input type="radio" class="btn-check" name="view_mode" id="vm_original" value="original" autocomplete="off">
+        <label class="btn btn-outline-secondary" for="vm_original"><i class="bi bi-image me-1" aria-hidden="true"></i>Original</label>
+      </div>
+    </div>
+    <div class="preview-wrap checkerboard border border-secondary border-opacity-25" id="preview-box">
+      <img id="preview-img" alt="Preview" class="mx-auto" style="display: none;" width="" height="">
+      <div id="process-overlay" class="process-overlay" aria-hidden="true">
+        <div class="scan-line"></div>
+        <div class="ring-pulse mb-3" role="presentation"></div>
+        <p id="process-status" class="text-white fw-semibold mb-1 text-center px-3">Preparing…</p>
+        <p class="small text-secondary text-center px-3 mb-0">Alpha matting for cleaner hair &amp; edges</p>
+      </div>
+    </div>
+    <p id="cutout-meta" class="small text-secondary mt-2 mb-0" style="display: none;"><i class="bi bi-aspect-ratio me-1" aria-hidden="true"></i><span id="cutout-dim"></span></p>
+  </div>
+
+  <div id="result-toolbar" class="glass-card rounded-4 p-3 p-md-4 mb-3">
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <span class="step-badge">3</span>
+      <h2 class="h6 mb-0 fw-semibold text-white">Export</h2>
+    </div>
+    <p class="small text-secondary mb-3">
+      <i class="bi bi-layers-half me-1 text-info" aria-hidden="true"></i>
+      <strong class="text-white">Transparent PNG</strong> = real alpha. Preview options below only affect what you see (and the composite download).
+    </p>
+
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <label class="form-label small text-secondary" for="bg-mode">Preview backdrop</label>
+        <select id="bg-mode" class="form-select form-select-sm border-secondary bg-dark text-white">
+          <option value="checker">Checkerboard (shows transparency)</option>
+          <option value="color">Solid color</option>
+          <option value="gradient">Gradient template</option>
+          <option value="custom">Custom image</option>
+        </select>
+      </div>
+      <div class="col-md-6" id="wrap-solid" style="display: none;">
+        <label class="form-label small text-secondary" for="solid-color">Color</label>
+        <input type="color" id="solid-color" class="form-control form-control-color w-100 border-secondary" value="#1e293b" title="Backdrop color">
+      </div>
+      <div class="col-md-6" id="wrap-gradient" style="display: none;">
+        <label class="form-label small text-secondary" for="gradient-key">Template</label>
+        <select id="gradient-key" class="form-select form-select-sm border-secondary bg-dark text-white"></select>
+      </div>
+      <div class="col-12" id="wrap-custom" style="display: none;">
+        <label class="form-label small text-secondary" for="custom-bg">Image</label>
+        <input type="file" id="custom-bg" accept="image/*" class="form-control form-control-sm border-secondary bg-dark text-secondary">
+      </div>
+    </div>
+
+    <div class="d-grid gap-2 d-sm-flex flex-wrap">
+      <button type="button" class="btn btn-success rounded-3 px-4" id="btn-dl-transparent" disabled>
+        <i class="bi bi-download me-1" aria-hidden="true"></i>Transparent PNG
+      </button>
+      <button type="button" class="btn btn-primary-gradient rounded-3 px-4" id="btn-dl-composite" disabled>
+        <i class="bi bi-image me-1" aria-hidden="true"></i>Composite PNG
+      </button>
+      <button type="button" class="btn btn-outline-light border-secondary rounded-3" id="btn-copy-png" disabled title="Copy cutout to clipboard">
+        <i class="bi bi-clipboard-check me-1" aria-hidden="true"></i>Copy cutout
+      </button>
+      <button type="button" class="btn btn-outline-secondary rounded-3 ms-sm-auto" id="btn-reset">
+        <i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>New image
+      </button>
+    </div>
+  </div>
+
+  <noscript><div class="alert alert-warning">Enable JavaScript for this tool.</div></noscript>
+</div>
+
+<script id="gradients-data" type="application/json">{{ presets_gradients_json|safe }}</script>
+<script>
+  window.IMAGETOOLS = {
+    removeBgUrl: "{{ remove_bg_api_url|escapejs }}",
+    maxMb: {{ max_mb }},
+  };
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var removeUrl = window.IMAGETOOLS.removeBgUrl;
+  var gradients = {};
+  try { gradients = JSON.parse(document.getElementById('gradients-data').textContent || '{}'); } catch (e) {}
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+
+  var fileInput = document.getElementById('file-input');
+  var dropZone = document.getElementById('drop-zone');
+  var fileHint = document.getElementById('file-hint');
+  var previewSection = document.getElementById('preview-section');
+  var previewBox = document.getElementById('preview-box');
+  var previewImg = document.getElementById('preview-img');
+  var processOverlay = document.getElementById('process-overlay');
+  var processStatus = document.getElementById('process-status');
+  var resultToolbar = document.getElementById('result-toolbar');
+  var btnDlTransparent = document.getElementById('btn-dl-transparent');
+  var btnDlComposite = document.getElementById('btn-dl-composite');
+  var btnCopyPng = document.getElementById('btn-copy-png');
+  var btnReset = document.getElementById('btn-reset');
+  var cutoutMeta = document.getElementById('cutout-meta');
+  var cutoutDim = document.getElementById('cutout-dim');
+  var bgMode = document.getElementById('bg-mode');
+  var solidColor = document.getElementById('solid-color');
+  var gradientKey = document.getElementById('gradient-key');
+  var customBg = document.getElementById('custom-bg');
+  var wrapSolid = document.getElementById('wrap-solid');
+  var wrapGradient = document.getElementById('wrap-gradient');
+  var wrapCustom = document.getElementById('wrap-custom');
+
+  var originalUrl = null;
+  var cutoutUrl = null;
+  var cutoutBlob = null;
+  var customBgUrl = null;
+  var processTimer = null;
+  var statusIdx = 0;
+  var statusMessages = [
+    'Analyzing composition…',
+    'Detecting subject…',
+    'Running segmentation…',
+    'Refining alpha (matting)…',
+    'Polishing mask…',
+  ];
+
+  Object.keys(gradients).sort().forEach(function (k) {
+    var opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = k.charAt(0).toUpperCase() + k.slice(1);
+    gradientKey.appendChild(opt);
+  });
+
+  function revokeAll() {
+    if (originalUrl) { URL.revokeObjectURL(originalUrl); originalUrl = null; }
+    if (cutoutUrl) { URL.revokeObjectURL(cutoutUrl); cutoutUrl = null; }
+    if (customBgUrl) { URL.revokeObjectURL(customBgUrl); customBgUrl = null; }
+    cutoutBlob = null;
+  }
+
+  function setProcessing(on) {
+    processOverlay.classList.toggle('is-active', on);
+    processOverlay.setAttribute('aria-hidden', on ? 'false' : 'true');
+    if (on) {
+      statusIdx = 0;
+      processStatus.textContent = statusMessages[0];
+      if (processTimer) clearInterval(processTimer);
+      processTimer = setInterval(function () {
+        statusIdx = (statusIdx + 1) % statusMessages.length;
+        processStatus.textContent = statusMessages[statusIdx];
+      }, 2200);
+    } else {
+      if (processTimer) { clearInterval(processTimer); processTimer = null; }
+    }
+  }
+
+  function updatePreviewDisplay() {
+    var vm = document.querySelector('input[name="view_mode"]:checked');
+    var mode = vm ? vm.value : 'cutout';
+    if (mode === 'original' && originalUrl) {
+      previewImg.src = originalUrl;
+      previewBox.classList.remove('checkerboard');
+      previewBox.style.background = '#111';
+    } else {
+      previewImg.src = cutoutUrl || originalUrl || '';
+      applyBackdropToPreviewBox();
+    }
+    previewImg.style.display = previewImg.src ? 'block' : 'none';
+  }
+
+  function rgbToCss(rgb) {
+    return 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+  }
+
+  function gradientCss(key) {
+    var g = gradients[key];
+    if (!g) return '';
+    return 'linear-gradient(to bottom, ' + rgbToCss(g[0]) + ', ' + rgbToCss(g[1]) + ')';
+  }
+
+  function applyBackdropToPreviewBox() {
+    var vm = document.querySelector('input[name="view_mode"]:checked');
+    if (vm && vm.value === 'original') return;
+    var m = bgMode.value;
+    previewBox.classList.remove('checkerboard');
+    previewBox.style.background = '';
+    if (m === 'checker') { previewBox.classList.add('checkerboard'); return; }
+    if (m === 'color') { previewBox.style.background = solidColor.value; return; }
+    if (m === 'gradient') { previewBox.style.background = gradientCss(gradientKey.value); return; }
+    if (m === 'custom' && customBgUrl) {
+      previewBox.style.background = 'url(' + customBgUrl + ') center/cover no-repeat';
+    } else if (m === 'custom') {
+      previewBox.classList.add('checkerboard');
+    }
+  }
+
+  function syncBgControls() {
+    wrapSolid.style.display = bgMode.value === 'color' ? 'block' : 'none';
+    wrapGradient.style.display = bgMode.value === 'gradient' ? 'block' : 'none';
+    wrapCustom.style.display = bgMode.value === 'custom' ? 'block' : 'none';
+    applyBackdropToPreviewBox();
+  }
+
+  function coverDraw(ctx, img, tw, th) {
+    var iw = img.naturalWidth, ih = img.naturalHeight;
+    var scale = Math.max(tw / iw, th / ih);
+    var nw = iw * scale, nh = ih * scale;
+    var x = (tw - nw) / 2, y = (th - nh) / 2;
+    ctx.drawImage(img, x, y, nw, nh);
+  }
+
+  function downloadBlob(blob, name) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  }
+
+  function compositeToBlob(callback) {
+    var cut = new Image();
+    cut.crossOrigin = 'anonymous';
+    cut.onload = function () {
+      var w = cut.naturalWidth, h = cut.naturalHeight;
+      var canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      var ctx = canvas.getContext('2d');
+      var m = bgMode.value;
+
+      function finish() {
+        ctx.drawImage(cut, 0, 0);
+        canvas.toBlob(function (blob) { callback(blob); }, 'image/png');
+      }
+
+      if (m === 'checker') {
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(cut, 0, 0);
+        canvas.toBlob(function (blob) { callback(blob); }, 'image/png');
+        return;
+      }
+      if (m === 'color') {
+        ctx.fillStyle = solidColor.value;
+        ctx.fillRect(0, 0, w, h);
+        finish();
+        return;
+      }
+      if (m === 'gradient') {
+        var g = gradients[gradientKey.value];
+        if (g) {
+          var grd = ctx.createLinearGradient(0, 0, 0, h);
+          grd.addColorStop(0, rgbToCss(g[0]));
+          grd.addColorStop(1, rgbToCss(g[1]));
+          ctx.fillStyle = grd;
+          ctx.fillRect(0, 0, w, h);
+        }
+        finish();
+        return;
+      }
+      if (m === 'custom' && customBgUrl) {
+        var bg = new Image();
+        bg.crossOrigin = 'anonymous';
+        bg.onload = function () { coverDraw(ctx, bg, w, h); finish(); };
+        bg.onerror = function () { ctx.fillStyle = '#334155'; ctx.fillRect(0, 0, w, h); finish(); };
+        bg.src = customBgUrl;
+        return;
+      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      finish();
+    };
+    cut.onerror = function () { callback(null); };
+    cut.src = cutoutUrl;
+  }
+
+  function runRemoveBg(file) {
+    setProcessing(true);
+    previewSection.style.display = 'block';
+    resultToolbar.classList.remove('visible');
+    btnDlTransparent.disabled = true;
+    btnDlComposite.disabled = true;
+    btnCopyPng.disabled = true;
+    cutoutMeta.style.display = 'none';
+    previewImg.style.display = 'block';
+
+    var fd = new FormData();
+    fd.append('image', file);
+    fetch(removeUrl, { method: 'POST', headers: { 'X-CSRFToken': csrf() }, body: fd })
+      .then(function (res) {
+        var dw = res.headers.get('X-Cutout-Width');
+        var dh = res.headers.get('X-Cutout-Height');
+        if (!res.ok) {
+          var ct = res.headers.get('content-type') || '';
+          if (ct.indexOf('application/json') !== -1) {
+            return res.json().then(function (j) { throw new Error(j.error || 'Failed'); });
+          }
+          throw new Error('Server error (' + res.status + ')');
+        }
+        return res.blob().then(function (blob) { return { blob: blob, dw: dw, dh: dh }; });
+      })
+      .then(function (o) {
+        cutoutBlob = o.blob;
+        if (cutoutUrl) URL.revokeObjectURL(cutoutUrl);
+        cutoutUrl = URL.createObjectURL(o.blob);
+        if (o.dw && o.dh) {
+          cutoutDim.textContent = 'Output ' + o.dw + ' × ' + o.dh + ' px';
+          cutoutMeta.style.display = 'block';
+        }
+        document.getElementById('vm_cutout').checked = true;
+        updatePreviewDisplay();
+        setProcessing(false);
+        resultToolbar.classList.add('visible');
+        btnDlTransparent.disabled = false;
+        btnDlComposite.disabled = false;
+        btnCopyPng.disabled = false;
+      })
+      .catch(function (err) {
+        setProcessing(false);
+        resultToolbar.classList.remove('visible');
+        btnDlTransparent.disabled = true;
+        btnDlComposite.disabled = true;
+        btnCopyPng.disabled = true;
+        alert(err.message || 'Could not remove background.');
+      });
+  }
+
+  var debounceId = null;
+  function onFile(file) {
+    if (!file || !file.type.match(/^image\//)) { alert('Choose a valid image file.'); return; }
+    if (file.size > window.IMAGETOOLS.maxMb * 1024 * 1024) {
+      alert('File too large (max ' + window.IMAGETOOLS.maxMb + ' MB).');
+      return;
+    }
+    revokeAll();
+    fileHint.innerHTML = '<span class="text-info">' + file.name + '</span> · ' + (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+
+    originalUrl = URL.createObjectURL(file);
+    previewSection.style.display = 'block';
+    previewImg.src = originalUrl;
+    previewImg.style.display = 'block';
+    previewBox.classList.remove('checkerboard');
+    previewBox.style.background = '#0f172a';
+    document.getElementById('vm_original').checked = true;
+    setProcessing(true);
+
+    if (debounceId) clearTimeout(debounceId);
+    debounceId = setTimeout(function () { runRemoveBg(file); }, 400);
+  }
+
+  fileInput.addEventListener('change', function () {
+    if (fileInput.files && fileInput.files[0]) onFile(fileInput.files[0]);
+  });
+
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    dropZone.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('dragover'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    dropZone.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('dragover'); });
+  });
+  dropZone.addEventListener('drop', function (e) {
+    var dt = e.dataTransfer;
+    if (dt && dt.files && dt.files.length) {
+      var d = new DataTransfer();
+      d.items.add(dt.files[0]);
+      fileInput.files = d.files;
+      onFile(dt.files[0]);
+    }
+  });
+
+  document.querySelectorAll('input[name="view_mode"]').forEach(function (r) {
+    r.addEventListener('change', updatePreviewDisplay);
+  });
+
+  bgMode.addEventListener('change', syncBgControls);
+  solidColor.addEventListener('input', function () { if (bgMode.value === 'color') applyBackdropToPreviewBox(); });
+  gradientKey.addEventListener('change', function () { if (bgMode.value === 'gradient') applyBackdropToPreviewBox(); });
+  customBg.addEventListener('change', function () {
+    var f = customBg.files && customBg.files[0];
+    if (customBgUrl) URL.revokeObjectURL(customBgUrl);
+    customBgUrl = f ? URL.createObjectURL(f) : null;
+    syncBgControls();
+  });
+
+  btnDlTransparent.addEventListener('click', function () {
+    if (!cutoutBlob) return;
+    downloadBlob(cutoutBlob, 'transparent-cutout.png');
+  });
+
+  btnDlComposite.addEventListener('click', function () {
+    if (!cutoutUrl) return;
+    btnDlComposite.disabled = true;
+    compositeToBlob(function (blob) {
+      btnDlComposite.disabled = false;
+      if (blob) downloadBlob(blob, 'composite.png');
+    });
+  });
+
+  btnCopyPng.addEventListener('click', async function () {
+    if (!cutoutBlob || !navigator.clipboard || !window.ClipboardItem) {
+      alert('Clipboard copy needs a secure context (HTTPS) and a modern browser.');
+      return;
+    }
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': cutoutBlob })]);
+      btnCopyPng.innerHTML = '<i class="bi bi-check2 me-1" aria-hidden="true"></i>Copied';
+      setTimeout(function () {
+        btnCopyPng.innerHTML = '<i class="bi bi-clipboard-check me-1" aria-hidden="true"></i>Copy cutout';
+      }, 2000);
+    } catch (err) {
+      alert('Could not copy — try downloading the PNG instead.');
+    }
+  });
+
+  btnReset.addEventListener('click', function () {
+    revokeAll();
+    fileInput.value = '';
+    fileHint.textContent = 'PNG, JPEG, WebP';
+    previewSection.style.display = 'none';
+    resultToolbar.classList.remove('visible');
+    previewImg.removeAttribute('src');
+    cutoutMeta.style.display = 'none';
+    customBg.value = '';
+    bgMode.value = 'checker';
+    syncBgControls();
+  });
+
+  syncBgControls();
+})();
+</script>
+{% endblock %}

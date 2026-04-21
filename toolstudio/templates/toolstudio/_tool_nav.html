@@ -1,0 +1,7 @@
+<nav class="mb-3 small" aria-label="Breadcrumb">
+  <ol class="breadcrumb mb-2">
+    <li class="breadcrumb-item"><a href="{% url 'toolstudio_hub' %}" class="text-decoration-none text-info">Tools</a></li>
+    <li class="breadcrumb-item active text-secondary" aria-current="page">{{ breadcrumb }}</li>
+  </ol>
+  <p class="mb-0 text-secondary small">Max <strong class="text-white-50 fw-normal">{{ upload_max_mb }} MB</strong> per file · Not stored after download</p>
+</nav>

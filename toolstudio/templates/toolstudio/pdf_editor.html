@@ -1,0 +1,110 @@
+{% extends "toolstudio/base.html" %}
+{% load static %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1150px;">
+  {% include "toolstudio/_tool_nav.html" with breadcrumb="Remove pages" %}
+  <h1 class="h3 text-white mb-2">Remove PDF pages <span class="badge bg-info bg-opacity-25 text-info small">Advanced</span></h1>
+  <p class="text-secondary small mb-4">Thumbnail strip helps you pick page numbers. For full in-browser editing see <a href="{% url 'toolstudio_pdf_studio' %}" class="text-info">PDF Editor</a>.</p>
+
+  {% if error %}
+  <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+  {% endif %}
+
+  <div class="row g-4 split-workspace">
+    <div class="col-lg-7">
+      <h2 class="h6 text-info mb-2">Pages</h2>
+      <input type="file" id="ed-file" accept="application/pdf,.pdf" class="form-control form-control-sm bg-dark border-secondary mb-2">
+      <div class="preview-panel mb-2"><canvas id="ed-cv" class="d-none rounded-2"></canvas><p class="ph" id="ed-ph">Upload PDF</p></div>
+      <div id="ed-strip" class="d-flex flex-wrap gap-1 justify-content-center"></div>
+    </div>
+    <div class="col-lg-5">
+      <h2 class="h6 text-success mb-2">Pages to remove</h2>
+      <form method="post" enctype="multipart/form-data" id="ed-form">
+        {% csrf_token %}
+        <input type="file" name="pdf" id="ed-form-pdf" class="d-none">
+        <label class="small text-secondary">Example: 1,3-5 removes those; keeps the rest.</label>
+        <input type="text" name="remove_pages" id="ed-spec" class="form-control form-control-sm bg-dark border-secondary mb-2" placeholder="1,3-5" required autocomplete="off">
+        <button type="submit" class="btn btn-danger btn-sm rounded-3">Process on server</button>
+      </form>
+      <div class="preview-panel mt-3">
+        <iframe id="ed-if" class="d-none w-100 rounded-2 border-0" style="min-height: 300px;"></iframe>
+        <p class="ph small mb-0" id="ed-note">POST returns edited PDF (use fetch below for preview)</p>
+      </div>
+      <button type="button" class="btn btn-outline-info btn-sm rounded-3 mt-2" id="ed-fetch">Process &amp; preview + download</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { loadPdfFromFile, renderPageToCanvas, renderThumbStrip } from "{% static 'toolstudio/js/advanced-pdf.js' %}";
+import { rejectOversizeFiles, parseToolErrorResponse } from "{% static 'toolstudio/js/tool-errors.js' %}";
+
+let cur = null;
+function csrf() { return document.querySelector('meta[name="csrf-token"]').content; }
+
+document.getElementById("ed-file").addEventListener("change", async (e) => {
+  let f = e.target.files[0];
+  if (!f) return;
+  const pass = rejectOversizeFiles([f], "PDF");
+  f = pass[0] || null;
+  if (!f) return;
+  const ok = f.type === "application/pdf" || /\.pdf$/i.test(f.name || "");
+  const ph = document.getElementById("ed-ph");
+  const cv = document.getElementById("ed-cv");
+  if (!ok) {
+    ph.classList.remove("d-none");
+    ph.textContent = "Choose a PDF file.";
+    cv.classList.add("d-none");
+    return;
+  }
+  cur = f;
+  const dt = new DataTransfer();
+  dt.add(f);
+  document.getElementById("ed-form-pdf").files = dt.files;
+  ph.classList.remove("d-none");
+  ph.textContent = "Rendering preview…";
+  cv.classList.add("d-none");
+  document.getElementById("ed-strip").innerHTML = "";
+  try {
+    const pdf = await loadPdfFromFile(f);
+    await renderPageToCanvas(pdf, 1, cv, 560);
+    await renderThumbStrip(f, document.getElementById("ed-strip"), 20, 80);
+    ph.classList.add("d-none");
+    cv.classList.remove("d-none");
+  } catch (err) {
+    ph.classList.remove("d-none");
+    ph.textContent = err && err.message ? err.message : "Could not preview PDF.";
+    cv.classList.add("d-none");
+    cur = null;
+  }
+});
+
+document.getElementById("ed-fetch").addEventListener("click", async () => {
+  const f = document.getElementById("ed-file").files[0];
+  const spec = document.getElementById("ed-spec").value.trim();
+  if (!f || !spec) return;
+  const fd = new FormData();
+  fd.append("csrfmiddlewaretoken", csrf());
+  fd.append("pdf", f);
+  fd.append("remove_pages", spec);
+  const res = await fetch("{% url 'toolstudio_pdf_editor' %}", { method: "POST", body: fd, headers: { "X-CSRFToken": csrf() }, credentials: "same-origin" });
+  if (!res.ok) {
+    const msg = await parseToolErrorResponse(res);
+    document.getElementById("ed-note").textContent = msg;
+    return;
+  }
+  const blob = await res.blob();
+  const u = URL.createObjectURL(blob);
+  const iframe = document.getElementById("ed-if");
+  iframe.src = u + "#toolbar=0";
+  iframe.classList.remove("d-none");
+  document.getElementById("ed-note").classList.add("d-none");
+  const a = document.createElement("a");
+  a.href = u;
+  a.download = "edited.pdf";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+});
+</script>
+{% endblock %}

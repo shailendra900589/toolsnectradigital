@@ -1,0 +1,157 @@
+{% extends "toolstudio/base.html" %}
+{% load static %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1200px;">
+  {% include "toolstudio/_tool_nav.html" with breadcrumb="Merge PDF" %}
+  <h1 class="h3 text-white mb-2">Merge PDF <span class="badge bg-info bg-opacity-25 text-info small">Advanced</span></h1>
+  <p class="text-secondary small mb-4">Drag &amp; drop PDFs, reorder with arrows, preview each first page. Merge order follows the list top → bottom.</p>
+
+  {% if error %}
+  <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+  {% endif %}
+
+  <div class="row g-4 split-workspace">
+    <div class="col-lg-7">
+      <h2 class="h6 text-info mb-2"><i class="bi bi-collection me-1"></i>Files &amp; order</h2>
+      <div id="dz-merge" class="drop-zone rounded-4 p-4 text-center small text-secondary mb-3">
+        <i class="bi bi-cloud-arrow-up fs-3 d-block mb-2 text-info opacity-75"></i>
+        Drop PDFs here or <label class="text-info text-decoration-underline mb-0" style="cursor:pointer;"><input type="file" id="merge-files" accept="application/pdf,.pdf" multiple class="d-none">browse</label>
+      </div>
+      <div id="merge-rows" class="d-flex flex-column gap-2"></div>
+    </div>
+    <div class="col-lg-5">
+      <h2 class="h6 text-success mb-2"><i class="bi bi-eye me-1"></i>Summary</h2>
+      <div class="glass-card rounded-4 p-3 small text-secondary mb-3">
+        <p class="mb-1"><span class="text-white" id="merge-count">0</span> file(s) · est. <span class="text-white" id="merge-pages">0</span> total pages</p>
+        <p class="mb-0 text-muted">Two or more PDFs required. Order = merge order.</p>
+      </div>
+      <button type="button" class="btn btn-info rounded-3 px-4" id="merge-submit" disabled>
+        <i class="bi bi-layers-fill me-1"></i>Merge &amp; download
+      </button>
+      <div class="preview-panel mt-3 bg-dark rounded-3 border border-secondary border-opacity-25" style="min-height: 200px;">
+        <p class="ph mb-0" id="merge-result-ph">Merged PDF downloads when ready. Use preview in PDF Editor for multi-page review.</p>
+        <iframe id="merge-iframe" class="d-none w-100 rounded-2 border-0" style="min-height: 320px;" title="Merged preview"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { loadPdfFromFile, renderPageToCanvas, formatBytes } from "{% static 'toolstudio/js/advanced-pdf.js' %}";
+import { rejectOversizeFiles, parseToolErrorResponse } from "{% static 'toolstudio/js/tool-errors.js' %}";
+
+const rows = document.getElementById("merge-rows");
+const fileInput = document.getElementById("merge-files");
+const dz = document.getElementById("dz-merge");
+let queue = [];
+
+function csrf() {
+  const m = document.querySelector('meta[name="csrf-token"]');
+  return m ? m.content : "";
+}
+
+async function addFiles(fileList) {
+  const allowed = rejectOversizeFiles(fileList, "PDF");
+  for (const f of allowed) {
+    if (f.type !== "application/pdf" && !f.name.toLowerCase().endsWith(".pdf")) continue;
+    queue.push(f);
+  }
+  renderRows();
+}
+
+function renderRows() {
+  rows.innerHTML = "";
+  queue.forEach((f, idx) => {
+    const wrap = document.createElement("div");
+    wrap.className = "glass-card rounded-3 p-2 d-flex align-items-center gap-2 flex-wrap";
+    wrap.innerHTML = `
+      <canvas class="rounded border border-secondary border-opacity-25" width="100" height="140" style="object-fit:contain;"></canvas>
+      <div class="flex-grow-1 small text-truncate" style="min-width:120px;"><div class="text-white text-truncate">${f.name}</div><div class="text-muted">${formatBytes(f.size)}</div></div>
+      <div class="btn-group btn-group-sm">
+        <button type="button" class="btn btn-outline-secondary up" ${idx === 0 ? "disabled" : ""} title="Move up">↑</button>
+        <button type="button" class="btn btn-outline-secondary down" ${idx === queue.length - 1 ? "disabled" : ""} title="Move down">↓</button>
+        <button type="button" class="btn btn-outline-danger rm" title="Remove">×</button>
+      </div>`;
+    const cv = wrap.querySelector("canvas");
+    loadPdfFromFile(f).then(async (pdf) => {
+      await renderPageToCanvas(pdf, 1, cv, 100);
+    }).catch((err) => {
+      const c2 = cv.getContext("2d");
+      c2.fillStyle = "rgba(248,113,113,0.9)";
+      c2.font = "11px sans-serif";
+      const msg = (err && err.message) ? err.message.slice(0, 80) : "Preview failed";
+      c2.fillText(msg, 4, 24);
+    });
+    wrap.querySelector(".up").addEventListener("click", () => {
+      if (idx <= 0) return;
+      [queue[idx - 1], queue[idx]] = [queue[idx], queue[idx - 1]];
+      renderRows();
+    });
+    wrap.querySelector(".down").addEventListener("click", () => {
+      if (idx >= queue.length - 1) return;
+      [queue[idx + 1], queue[idx]] = [queue[idx], queue[idx + 1]];
+      renderRows();
+    });
+    wrap.querySelector(".rm").addEventListener("click", () => {
+      queue.splice(idx, 1);
+      renderRows();
+    });
+    rows.appendChild(wrap);
+  });
+  document.getElementById("merge-count").textContent = String(queue.length);
+  Promise.all(queue.map((f) => loadPdfFromFile(f).then((pdf) => pdf.numPages)))
+    .then((counts) => {
+      document.getElementById("merge-pages").textContent = String(counts.reduce((a, b) => a + b, 0));
+    })
+    .catch(() => { document.getElementById("merge-pages").textContent = "?"; });
+  document.getElementById("merge-submit").disabled = queue.length < 2;
+}
+
+fileInput.addEventListener("change", (e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; });
+["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("dragover"); }));
+["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("dragover"); }));
+dz.addEventListener("drop", (e) => { if (e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+
+document.getElementById("merge-submit").addEventListener("click", async () => {
+  if (queue.length < 2) return;
+  const fd = new FormData();
+  fd.append("csrfmiddlewaretoken", csrf());
+  queue.forEach((f) => fd.append("pdfs", f));
+  const btn = document.getElementById("merge-submit");
+  btn.disabled = true;
+  const ph = document.getElementById("merge-result-ph");
+  const iframe = document.getElementById("merge-iframe");
+  ph.textContent = "Merging…";
+  try {
+    const res = await fetch("{% url 'toolstudio_pdf_merge' %}", {
+      method: "POST",
+      body: fd,
+      headers: { "X-CSRFToken": csrf() },
+      credentials: "same-origin",
+    });
+    if (!res.ok) {
+      const msg = await parseToolErrorResponse(res);
+      ph.textContent = msg;
+      ph.classList.remove("d-none");
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const u = URL.createObjectURL(blob);
+    iframe.classList.remove("d-none");
+    iframe.src = u + "#toolbar=0";
+    ph.classList.add("d-none");
+    const a = document.createElement("a");
+    a.href = u;
+    a.download = "merged.pdf";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  } catch (err) {
+    ph.textContent = (err && err.message) ? err.message : "Merge failed — try again or use smaller files.";
+    ph.classList.remove("d-none");
+  } finally {
+    btn.disabled = queue.length < 2;
+  }
+});
+</script>
+{% endblock %}
